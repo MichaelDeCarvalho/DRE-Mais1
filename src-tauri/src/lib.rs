@@ -1,0 +1,83 @@
+mod catalog;
+mod database;
+mod importer;
+
+use rusqlite::Connection;
+use std::{path::PathBuf, sync::Mutex};
+use tauri::Manager;
+
+struct AppState { db: Mutex<Connection> }
+
+#[tauri::command]
+async fn import_reports(
+    app: tauri::AppHandle, period: String, products_path: String, payments_path: String,
+) -> Result<importer::ImportSummary, String> {
+    // Executa leitura local e validações fora da thread da interface.
+    tauri::async_runtime::spawn_blocking(move || {
+        let product_path = PathBuf::from(&products_path);
+        let payment_path = PathBuf::from(&payments_path);
+        if product_path == payment_path {
+            return Err("Escolha dois arquivos diferentes, um para produtos e outro para pagamentos.".into());
+        }
+        // Somente a transação final grava; qualquer erro anterior mantém o banco intacto.
+        let products = importer::parse_products(&product_path)?;
+        let payments = importer::parse_payments(&payment_path)?;
+        let state = app.state::<AppState>();
+        let mut db = state.db.lock().map_err(|_| "Banco bloqueado por falha interna".to_string())?;
+        database::save_reports(&mut db, &period, products, payments)
+    }).await.map_err(|e| format!("Falha ao executar importação: {e}"))?
+}
+
+#[tauri::command]
+async fn import_legacy_catalog(app: tauri::AppHandle, catalog_path: String) -> Result<catalog::CatalogImportSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let parsed = catalog::parse_legacy_catalog(&PathBuf::from(catalog_path))?;
+        let state = app.state::<AppState>();
+        let mut db = state.db.lock().map_err(|_| "Banco temporariamente inacessível".to_string())?;
+        catalog::save_legacy_catalog(&mut db, parsed)
+    }).await.map_err(|e| format!("Falha ao importar catálogo: {e}"))?
+}
+
+#[tauri::command]
+async fn get_catalog_status(app: tauri::AppHandle) -> Result<catalog::CatalogStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().map_err(|_| "Banco temporariamente inacessível".to_string())?;
+        catalog::catalog_status(&db)
+    }).await.map_err(|e| format!("Falha ao consultar catálogo: {e}"))?
+}
+
+#[tauri::command]
+async fn review_mappings(app: tauri::AppHandle, period: String) -> Result<catalog::MappingOverview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().map_err(|_| "Banco temporariamente inacessível".to_string())?;
+        catalog::mapping_overview(&db, &period)
+    }).await.map_err(|e| format!("Falha ao consultar mapeamentos: {e}"))?
+}
+
+#[tauri::command]
+async fn load_period_summary(app: tauri::AppHandle, period: String) -> Result<importer::ImportSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().map_err(|_| "Banco temporariamente inacessível".to_string())?;
+        database::load_period_summary(&db, &period)
+    }).await.map_err(|e| format!("Falha ao consultar período: {e}"))?
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let path = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&path)?;
+            let db = database::open_database(&path.join("dre-mais1.sqlite"))
+                .map_err(std::io::Error::other)?;
+            app.manage(AppState { db: Mutex::new(db) });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary])
+        .run(tauri::generate_context!())
+        .expect("Falha ao iniciar DRE Mais1");
+}

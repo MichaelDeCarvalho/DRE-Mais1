@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Apenas o diálogo nativo de seleção de arquivos e comandos explicitamente registrados.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}
