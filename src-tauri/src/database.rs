@@ -227,7 +227,11 @@ mod tests {
             importer::parse_products(&fixture("produtos-set-2026.xlsx")).unwrap(),
             importer::parse_payments(&fixture("pagamentos-divergentes.xlsx")).unwrap()).unwrap();
         assert!(!summary.reconciled);
-        assert_eq!(summary.difference_cents, 2493463);
+        // A fixture sintetica difere em R$ 1,00; o valor deve permanecer negativo.
+        assert_eq!(summary.difference_cents, -100);
+        let stored = load_period_summary(&db, "2026-09").unwrap();
+        assert!(!stored.reconciled);
+        assert_eq!(stored.difference_cents, -100);
         let status: String = db.query_row("SELECT status FROM periods WHERE year_month='2026-09'", [], |r| r.get(0)).unwrap();
         assert_eq!(status, "DIVERGENTE");
     }
