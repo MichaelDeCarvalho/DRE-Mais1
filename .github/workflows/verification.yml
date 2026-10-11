@@ -79,6 +79,14 @@ jobs:
       - name: Compilar Tauri sem instalador
         run: npm run tauri -- build --no-bundle --ci
 
+      # Runner automatizado nao equivale a desktop interativo: diagnostico nao bloqueante.
+      - name: Diagnostico inicializacao Windows (nao homologacao GUI)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        timeout-minutes: 2
+        run: ./tools/smoke_windows.ps1
+
       - name: Guardar lockfiles gerados
         if: always()
         uses: actions/upload-artifact@v4
