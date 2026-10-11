@@ -3,9 +3,17 @@
 Aplicativo desktop **offline** em **Tauri 2 + React/TypeScript/Vite + Rust + SQLite**.
 Este marco cobre exclusivamente a importação local de dois relatórios XLS/XLSX, validação de período e estrutura, normalização de pagamentos, conciliação monetária e listagem de códigos vendidos sem mapeamento. **Não** contém CMV, DRE, licenciamento, servidor, SaaS nem histórico anual.
 
+## Estado de homologação verificado — 11/10/2026
+
+- **Compilação real aprovada em GitHub Actions (Linux e Windows):** [execução 38113251969](https://github.com/MichaelDeCarvalho/DRE-Mais1/actions/runs/38113251969); 25/25 testes Rust por sistema, Vitest, TypeScript/Vite, SQLite e compilação Tauri `--no-bundle` aprovados.
+- O [executável Windows](https://github.com/MichaelDeCarvalho/DRE-Mais1/actions/runs/38113251969/artifacts/11693050659) existe, mas **não é instalador e não está homologado na interface gráfica**.
+- **Os arquivos `tests/fixtures/` deste repositório são sintéticos**, sem produtos/identificadores reais; não enviar a planilha consolidada nem relatórios originais.
+- Os lockfiles foram gerados no CI e estão disponíveis como artefatos, porém **ainda não foram versionados**. Próximo ajuste de reprodutibilidade: adicioná-los ao Git, mudar para `npm ci` e Cargo `--locked`.
+- Consulte [evidência de execução e pendências](docs/CI_VERIFIED_2026_10_11.md) e [roteiro de homologação desktop](docs/HOMOLOGATION_DESKTOP.md). Os relatos históricos abaixo descrevem o estado das versões anteriores.
+
 ## Preparação e execução
 
-Pré-requisitos: **Node.js**, **Rust/Cargo** e dependências nativas do Tauri compatíveis com o sistema operacional ([instruções oficiais](https://v2.tauri.app/start/prerequisites/)). O repositório deve permanecer privado porque inclui relatórios financeiros como fixtures.
+Pré-requisitos: **Node.js**, **Rust/Cargo** e dependências nativas do Tauri compatíveis com o sistema operacional ([instruções oficiais](https://v2.tauri.app/start/prerequisites/)). O repositório permanece privado por decisão comercial. As fixtures publicadas nele são sintéticas; relatórios financeiros reais ficam somente no ambiente local seguro.
 
 ```bash
 npm install
