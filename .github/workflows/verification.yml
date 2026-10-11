@@ -1,0 +1,98 @@
+name: Verificacao - Marco 1
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests-desktop:
+    name: ${{ matrix.platform }} - testes e compilacao Tauri
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-22.04
+          - platform: windows
+            os: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependencias Linux do Tauri 2
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Ainda sem package-lock.json. Depois do primeiro build validado,
+      # versionar lockfiles e substituir npm install por npm ci.
+      - name: Instalar dependencias frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Testes frontend - Vitest
+        run: npm test
+
+      - name: Typecheck e build Vite
+        run: npm run build
+
+      - name: Testes reais Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Validar fixtures e contratos SQLite
+        run: |
+          python tools/verify_fixtures.py
+          python tools/verify_legacy_catalog.py
+          python tools/verify_persistence_contract.py
+          python tools/verify_catalog_status_contract.py
+
+      - name: Compilar Tauri sem instalador
+        run: npm run tauri -- build --no-bundle --ci
+
+      - name: Guardar lockfiles gerados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lockfiles-${{ matrix.platform }}
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
+          if-no-files-found: warn
+
+      - name: Guardar executavel Windows nao homologado
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dre-mais1-windows-sem-homologacao-gui
+          path: src-tauri/target/release/dre-mais1.exe
+          if-no-files-found: error
+          retention-days: 7
