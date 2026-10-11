@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Evita gastar runners com compilacoes obsoletas no mesmo branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests-desktop:
     name: ${{ matrix.platform }} - testes e compilacao Tauri
