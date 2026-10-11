@@ -1,0 +1,30 @@
+# Dependências e builds
+node_modules/
+dist/
+target/
+src-tauri/target/
+coverage/
+test-results/
+
+# Dados locais e segredos
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-wal
+*.db-shm
+*.log
+.DS_Store
+__pycache__/
+.pytest_cache/
+.venv/
+
+# Dados reais da loja: nunca versionar
+tests/private/
+tests/fixtures-originais/
+docs/audit_evidence/
+dados-reais/
+relatorios-originais/
