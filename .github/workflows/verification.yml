@@ -68,10 +68,11 @@ jobs:
       - name: Testes reais Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      - name: Validar fixtures e contratos SQLite
+      # As fixtures XLSX e as regras de importacao sao testadas em Rust acima.
+      # verify_fixtures.py e verify_legacy_catalog.py usam artifact_tool,
+      # disponivel no ambiente de analise, mas nao no runner do GitHub.
+      - name: Validar contratos SQLite portaveis
         run: |
-          python tools/verify_fixtures.py
-          python tools/verify_legacy_catalog.py
           python tools/verify_persistence_contract.py
           python tools/verify_catalog_status_contract.py
 
