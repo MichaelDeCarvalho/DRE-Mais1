@@ -35,3 +35,15 @@ Código preparado em pacote local; GitHub não foi alterado e o pipeline não ro
 - Pacote de publicação separado da versão local: `tests/fixtures/` substituídas por cenários totalmente sintéticos com totais de aceite; `docs/audit_evidence/` e `test-results/` não integram o pacote.
 - Testes independentes reexecutados nesse pacote: 13 fixtures + 9 catálogo + 8 SQLite + 5 status = 35 aprovados. Rust/Cargo, npm/Vitest e GUI não executados.
 - Próxima ação: criar repositório privado vazio (sem README inicial) e enviar código por integração GitHub; iniciar CI para erros reais e gerar lockfiles.
+
+
+## 2026-10-11 — CI real aprovado; homologacao GUI pendente
+
+- Repositorio confirmado: `MichaelDeCarvalho/DRE-Mais1`, privado, `main`.
+- Evidencia efetiva: [GitHub Actions run 38113251969](https://github.com/MichaelDeCarvalho/DRE-Mais1/actions/runs/38113251969), commit `5ab7f68`, Linux e Windows **SUCCESS**.
+- Testes executados: `npm test`/Vitest, `npm run build`/TypeScript+Vite, `cargo test` **25/25 em cada OS**, verificadores Python/SQLite portaveis, compilacao Tauri `--no-bundle --ci`.
+- Artefato Windows gerado, nao instalador nem GUI homologada: [download GitHub](https://github.com/MichaelDeCarvalho/DRE-Mais1/actions/runs/38113251969/artifacts/11693050659) (retencao ate 18/10/2026).
+- Falhas anteriores resolvidas por `2bfe680` (fixture divergente em -100 centavos) e `5ab7f68` (CI Python sem artifact_tool).
+- Arquivos atuais extras: `docs/CI_VERIFIED_2026_10_11.md` e `tools/smoke_windows.ps1`; o ultimo entrou no CI como diagnostico Windows opcional, nao substitui GUI.
+- Pendente: versionar os lockfiles gerados; `npm ci`/Cargo `--locked`; abrir executavel em Windows interativo e seguir cenarios A-J de `docs/HOMOLOGATION_DESKTOP.md` com relatorios de setembro em perfil de TESTE.
+- CMV, DRE e licenciamento permanecem fora do primeiro marco; Simples por faixa continua decisao documentada sem codigo implementado.
