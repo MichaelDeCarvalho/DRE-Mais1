@@ -29,6 +29,12 @@ export function App() {
   const [catalogStatusLoading, setCatalogStatusLoading] = useState(true);
   const [catalogInfo, setCatalogInfo] = useState<CatalogImportSummary | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [recipeProduct, setRecipeProduct] = useState('');
+  const [recipeIngredient, setRecipeIngredient] = useState('');
+  const [recipeQty, setRecipeQty] = useState('');
+  const [recipeError, setRecipeError] = useState('');
+  const [recipeCost, setRecipeCost] = useState<{ productCode:string; period:string; totalCostCents:number; ingredientCount:number } | null>(null);
+  const [recipeBusy, setRecipeBusy] = useState(false);
   const [ingredientCode, setIngredientCode] = useState('');
   const [ingredientName, setIngredientName] = useState('');
   const [ingredientUnit, setIngredientUnit] = useState('G');
@@ -153,6 +159,26 @@ export function App() {
     } catch (e) { setIngredientError(explainError(e)); }
     finally { setIngredientBusy(false); }
   }
+  async function saveRecipeLine() {
+    if (recipeBusy) return;
+    setRecipeBusy(true);setRecipeError('');
+    try {
+      if (!/^\d+$/.test(recipeQty) || !Number.isSafeInteger(Number(recipeQty)) || Number(recipeQty) < 1) throw new Error('Informe uma quantidade inteira positiva na unidade basica do insumo.');
+      const result = await invoke<typeof recipeCost>('set_recipe_line', {
+        period, productCode: recipeProduct.trim(), ingredientCode: recipeIngredient.trim(), quantityBase: Number(recipeQty),
+      });
+      setRecipeCost(result);setRecipeIngredient('');setRecipeQty('');
+    } catch(e) {setRecipeError(explainError(e));}
+    finally {setRecipeBusy(false);}
+  }
+  async function inspectRecipe() {
+    if(recipeBusy)return;
+    setRecipeBusy(true);setRecipeError('');setRecipeCost(null);
+    try {
+      setRecipeCost(await invoke<typeof recipeCost>('get_recipe_cost',{period,productCode:recipeProduct.trim()}));
+    }catch(e){setRecipeError(explainError(e));}
+    finally{setRecipeBusy(false);}
+  }
   async function submit() {
     if (!productsPath || !paymentsPath || !canSubmit) return;
     setPending(true); setError(null); setResult(null); setEditingCode(null); setFilter('');
@@ -249,6 +275,19 @@ export function App() {
           {ingredientError && <div className="feedback feedback-error" role="alert">{ingredientError}</div>}
           {ingredientInfo && <div className="feedback feedback-info" role="status">{ingredientInfo}</div>}
           {ingredients.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Insumo</th><th>Unidade</th><th>Qtd. compra</th><th>Custo compra</th><th>Frete</th><th>ST</th><th>Custo total</th><th>Fornecedor</th><th>Origem</th></tr></thead><tbody>{ingredients.map(i => <tr key={i.code}><td>{i.code}</td><td>{i.name}</td><td>{i.baseUnit}</td><td className="num">{i.quantityBase}</td><td className="num">{brl(i.purchaseCents)}</td><td className="num">{brl(i.freightCents)}</td><td className="num">{brl(i.stCents)}</td><td className="num">{brl(i.totalCents)}</td><td>{i.supplier || 'Não informado'}</td><td>{i.origin}</td></tr>)}</tbody></table></div>}
+        </section>
+        <section className="section-block" aria-labelledby="recipe-heading">
+          <div className="section-heading"><span className="step">07</span><div><h2 id="recipe-heading">Ficha técnica — custo teórico unitário</h2><p>Vincule quantidades consumidas ao código do produto e ao insumo cadastrado. Não calcula estoque nem CMV contábil.</p></div></div>
+          <div className="selectors">
+            <label>Código do produto vendido<input value={recipeProduct} disabled={recipeBusy} onChange={e=>{setRecipeProduct(e.target.value);setRecipeCost(null);}} placeholder="Código externo já mapeado"/></label>
+            <label>Código do insumo<input value={recipeIngredient} disabled={recipeBusy} onChange={e=>setRecipeIngredient(e.target.value)} placeholder="Ex.: LEITE"/></label>
+            <label>Consumo (G, ML ou UN)<input value={recipeQty} disabled={recipeBusy} inputMode="numeric" onChange={e=>setRecipeQty(e.target.value)} placeholder="150"/></label>
+            <button type="button" className="primary-button" disabled={recipeBusy || !recipeProduct.trim() || !recipeIngredient.trim() || !recipeQty.trim()} onClick={saveRecipeLine}>Adicionar ingrediente à ficha</button>
+            <button type="button" className="outline-button" disabled={recipeBusy || !recipeProduct.trim()} onClick={inspectRecipe}>Consultar custo da ficha</button>
+          </div>
+          <p>O vínculo de cada insumo é único por produto e competência. Correções de receitas existentes serão implementadas com versionamento e revisão controlada, não por sobrescrita silenciosa.</p>
+          {recipeError && <div className="feedback feedback-error" role="alert">{recipeError}</div>}
+          {recipeCost && <div className="feedback feedback-info" role="status"><strong>Ficha do produto {recipeCost.productCode}: {recipeCost.ingredientCount} insumo(s).</strong><p>Custo teórico unitário: {brl(Math.round(recipeCost.totalCostCents))}. Valor interno antes do arredondamento: {recipeCost.totalCostCents.toFixed(4)} centavos.</p></div>}
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
