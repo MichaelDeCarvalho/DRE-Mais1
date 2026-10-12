@@ -58,3 +58,11 @@ Código preparado em pacote local; GitHub não foi alterado e o pipeline não ro
 - Teste Rust novo: primeira vinculacao reduz pendentes de 29 para 28, bloqueia codigo repetido/inexistente, preserva totais e persiste ao reabrir SQLite.
 - Nao presumir resultado do novo CI antes da finalizacao. O executavel anterior v0.1.5 nao contem a funcionalidade nova.
 - Proxima validacao: CI Windows/Linux com Rust e TypeScript; somente depois entregar novo executavel e validar manualmente em banco de testes com copia/backup do SQLite. Sem CMV/fichas tecnicas nesta etapa.
+
+## 2026-10-12 — Homologacao usuario: 120/120 codigos vendidos mapeados
+
+- Usuario confirmou importacao de setembro de 2026 com R$ 24.944,63 tanto em produtos quanto pagamentos e diferenca de R$ 0,00.
+- Apos recuperar uma copia de backup do SQLite, o usuario confirmou 29 pendentes e testou cadastramento de um codigo: 28 pendentes persistindo apos reiniciar, totais preservados.
+- Usuario informou ter concluido o cadastro dos restantes: **120 codigos vendidos, 120 mapeados, zero pendentes**. Evidencia e relato do operador, nao copia auditada do banco atual.
+- Nao substituir nem migrar banco Windows automaticamente. Backup anterior a mapeamento (176 KB) e importante para restauracao; backup atualizado pos-mapeamento deve ser feito pelo usuario.
+- Proxima etapa: consolidar integridade/backup pos-cadastro e projetar cadastros de insumos/fichas tecnicas com regras de unidade, rendimento, versoes de custo, custos por competencia e auditabilidade; NAO presumir CMV/DRE finalizado.
