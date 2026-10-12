@@ -47,3 +47,14 @@ Código preparado em pacote local; GitHub não foi alterado e o pipeline não ro
 - Arquivos atuais extras: `docs/CI_VERIFIED_2026_10_11.md` e `tools/smoke_windows.ps1`; o ultimo entrou no CI como diagnostico Windows opcional, nao substitui GUI.
 - Pendente: versionar os lockfiles gerados; `npm ci`/Cargo `--locked`; abrir executavel em Windows interativo e seguir cenarios A-J de `docs/HOMOLOGATION_DESKTOP.md` com relatorios de setembro em perfil de TESTE.
 - CMV, DRE e licenciamento permanecem fora do primeiro marco; Simples por faixa continua decisao documentada sem codigo implementado.
+
+
+## 2026-10-12 — Inicio da etapa de mapeamento manual (NAO HOMOLOGADA)
+
+- Marco 1: usuario confirmou em Windows com arquivos reais a importacao/conciliacao, persistencia, bloqueio de duplicidade, erro de competencia, cabecalho invalido e manutencao de setembro. Foram informados 135 codigos de referencia e 29 pendentes.
+- Migracao aditiva `0003_product_mapping.sql`: historico das decisoes de vinculacao manual; nunca altera linhas financeiras originais.
+- `catalog::register_sold_product`: apenas para codigos realmente vendidos e ainda pendentes na competencia, validando codigo/nome/categoria, inserindo `products` + `product_external_codes` + auditoria na mesma transacao SQLite.
+- `src-tauri/src/lib.rs`: comando Tauri `register_sold_product`; `src/App.tsx`: formulario explicito por codigo pendente.
+- Teste Rust novo: primeira vinculacao reduz pendentes de 29 para 28, bloqueia codigo repetido/inexistente, preserva totais e persiste ao reabrir SQLite.
+- Nao presumir resultado do novo CI antes da finalizacao. O executavel anterior v0.1.5 nao contem a funcionalidade nova.
+- Proxima validacao: CI Windows/Linux com Rust e TypeScript; somente depois entregar novo executavel e validar manualmente em banco de testes com copia/backup do SQLite. Sem CMV/fichas tecnicas nesta etapa.
