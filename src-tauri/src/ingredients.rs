@@ -123,7 +123,7 @@ mod tests {
    register_detailed(&mut db,"2026-09","CAFE","Cafe","G",5000,57385,"FORNECEDOR",500,300).unwrap();
   }
   let db=database::open_database(&p).unwrap();
-  assert_eq!(list(&db,"2026-09").unwrap()[0].purchase_cents,650);
+  assert_eq!(list(&db,"2026-09").unwrap().iter().find(|i|i.code=="LEITE").unwrap().purchase_cents,650);
   assert_eq!(list(&db,"2026-10").unwrap()[0].purchase_cents,720);
   assert_eq!(list(&db,"2026-09").unwrap().iter().find(|i|i.code=="CAFE").unwrap().total_cents,58185);
  }
