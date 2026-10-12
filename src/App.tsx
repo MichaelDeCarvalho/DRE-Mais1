@@ -34,7 +34,10 @@ export function App() {
   const [ingredientUnit, setIngredientUnit] = useState('G');
   const [ingredientQty, setIngredientQty] = useState('');
   const [ingredientCost, setIngredientCost] = useState('');
-  const [ingredients, setIngredients] = useState<Array<{ code: string; name: string; baseUnit: string; quantityBase: number; purchaseCents: number; origin: string }>>([]);
+  const [ingredientSupplier, setIngredientSupplier] = useState('');
+  const [ingredientFreight, setIngredientFreight] = useState('0');
+  const [ingredientSt, setIngredientSt] = useState('0');
+  const [ingredients, setIngredients] = useState<Array<{ code: string; name: string; baseUnit: string; quantityBase: number; purchaseCents: number; origin: string; supplier: string; freightCents: number; stCents: number; totalCents: number }>>([]);
   const [ingredientError, setIngredientError] = useState('');
   const [ingredientInfo, setIngredientInfo] = useState('');
   const [ingredientBusy, setIngredientBusy] = useState(false);
@@ -127,13 +130,13 @@ export function App() {
     if (ingredientBusy) return;
     setIngredientBusy(true); setIngredientError(''); setIngredientInfo('');
     try {
-      if (!/^\d+$/.test(ingredientQty) || !/^\d+$/.test(ingredientCost)) throw new Error('Quantidade e custo em centavos devem ser inteiros sem pontos ou vírgulas.');
+      if (!/^\d+$/.test(ingredientQty) || !/^\d+$/.test(ingredientCost) || !/^\d+$/.test(ingredientFreight) || !/^\d+$/.test(ingredientSt)) throw new Error('Quantidade e custo em centavos devem ser inteiros sem pontos ou vírgulas.');
       await invoke('register_ingredient', {
         period, code: ingredientCode, name: ingredientName, baseUnit: ingredientUnit,
-        quantityBase: Number(ingredientQty), purchaseCents: Number(ingredientCost),
+        quantityBase: Number(ingredientQty), purchaseCents: Number(ingredientCost), supplier: ingredientSupplier, freightCents: Number(ingredientFreight), stCents: Number(ingredientSt),
       });
       setIngredientInfo('Insumo e custo cadastrados nesta competência.');
-      setIngredientCode('');setIngredientName('');setIngredientQty('');setIngredientCost('');
+      setIngredientCode('');setIngredientName('');setIngredientQty('');setIngredientCost('');setIngredientSupplier('');setIngredientFreight('0');setIngredientSt('0');
       await reloadIngredients();
     } catch (e) { setIngredientError(explainError(e)); }
     finally { setIngredientBusy(false); }
@@ -230,19 +233,22 @@ export function App() {
           <div className="selectors">
             <label>Código<input value={ingredientCode} maxLength={40} disabled={ingredientBusy} onChange={e => setIngredientCode(e.target.value)} /></label>
             <label>Insumo<input value={ingredientName} maxLength={200} disabled={ingredientBusy} onChange={e => setIngredientName(e.target.value)} /></label>
+            <label>Fornecedor<input value={ingredientSupplier} maxLength={200} disabled={ingredientBusy} onChange={e => setIngredientSupplier(e.target.value)} /></label>
+            <label>Frete (centavos)<input value={ingredientFreight} inputMode="numeric" disabled={ingredientBusy} onChange={e => setIngredientFreight(e.target.value)} /></label>
+            <label>ST (centavos)<input value={ingredientSt} inputMode="numeric" disabled={ingredientBusy} onChange={e => setIngredientSt(e.target.value)} /></label>
             <label>Unidade<select value={ingredientUnit} disabled={ingredientBusy} onChange={e => setIngredientUnit(e.target.value)}><option>G</option><option>ML</option><option>UN</option></select></label>
             <label>Quantidade compra<input value={ingredientQty} inputMode="numeric" disabled={ingredientBusy} onChange={e => setIngredientQty(e.target.value)} placeholder="1000"/></label>
             <label>Custo compra (centavos)<input value={ingredientCost} inputMode="numeric" disabled={ingredientBusy} onChange={e => setIngredientCost(e.target.value)} placeholder="2590"/></label>
             <button type="button" className="primary-button" disabled={ingredientBusy || !ingredientCode.trim() || !ingredientName.trim() || !ingredientQty || !ingredientCost} onClick={saveIngredient}>Cadastrar insumo</button>
           </div>
           <div className="action-line">
-            <p>Excel: primeira aba, cabeçalhos exatos Codigo, Insumo, Unidade, QuantidadeCompra, CustoCompraCentavos. Todos os custos são da competência selecionada; não há sobrescrita.</p>
+            <p>Excel: primeira aba, cabeçalhos exatos Codigo, Insumo, Unidade, QuantidadeCompra, CustoCompraCentavos. Opcionalmente acrescente Fornecedor, FreteCentavos, STCentavos. Todos os custos são da competência selecionada; não há sobrescrita.</p>
             <button type="button" className="outline-button" disabled={ingredientBusy} onClick={importIngredientFile}>Importar insumos do Excel</button>
             <button type="button" className="outline-button" disabled={ingredientBusy} onClick={reloadIngredients}>Consultar insumos</button>
           </div>
           {ingredientError && <div className="feedback feedback-error" role="alert">{ingredientError}</div>}
           {ingredientInfo && <div className="feedback feedback-info" role="status">{ingredientInfo}</div>}
-          {ingredients.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Insumo</th><th>Unidade</th><th>Qtd. compra</th><th>Custo compra</th><th>Origem</th></tr></thead><tbody>{ingredients.map(i => <tr key={i.code}><td>{i.code}</td><td>{i.name}</td><td>{i.baseUnit}</td><td className="num">{i.quantityBase}</td><td className="num">{brl(i.purchaseCents)}</td><td>{i.origin}</td></tr>)}</tbody></table></div>}
+          {ingredients.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Insumo</th><th>Unidade</th><th>Qtd. compra</th><th>Custo compra</th><th>Frete</th><th>ST</th><th>Custo total</th><th>Fornecedor</th><th>Origem</th></tr></thead><tbody>{ingredients.map(i => <tr key={i.code}><td>{i.code}</td><td>{i.name}</td><td>{i.baseUnit}</td><td className="num">{i.quantityBase}</td><td className="num">{brl(i.purchaseCents)}</td><td className="num">{brl(i.freightCents)}</td><td className="num">{brl(i.stCents)}</td><td className="num">{brl(i.totalCents)}</td><td>{i.supplier || 'Não informado'}</td><td>{i.origin}</td></tr>)}</tbody></table></div>}
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
