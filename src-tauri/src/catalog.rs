@@ -205,6 +205,53 @@ pub fn mapping_overview(db: &Connection, period: &str) -> Result<MappingOverview
     Ok(MappingOverview { sold_product_codes: candidates.len(), mapped_product_codes: candidates.len() - unmapped.len(), unmapped_products: unmapped })
 }
 
+/// Cadastro intencional de um codigo vendido, sem alterar o historico da venda.
+pub fn register_sold_product(
+    db: &mut Connection, period: &str, external_code: &str,
+    display_name: &str, managerial_category: &str,
+) -> Result<MappingOverview, String> {
+    let code = external_code.trim();
+    let name = display_name.trim();
+    let category = managerial_category.trim();
+    if code.is_empty() || !code.chars().all(|c| c.is_ascii_digit())
+        || code.starts_with('0') || code.len() > 30 {
+        return Err("Codigo externo invalido; informe um codigo numerico positivo sem zeros iniciais.".into());
+    }
+    if name.is_empty() || name.chars().count() > 200 || category.is_empty() || category.chars().count() > 120 {
+        return Err("Informe nome (ate 200 caracteres) e categoria gerencial (ate 120 caracteres).".into());
+    }
+    // Validar contra os produtos realmente vendidos ANTES de criar qualquer registro.
+    let overview = mapping_overview(db, period)?;
+    if !overview.unmapped_products.iter().any(|p| p.external_code == code) {
+        return Err("Codigo nao esta pendente neste periodo; nenhuma alteracao realizada.".into());
+    }
+    let period_id: i64 = db.query_row(
+        "SELECT id FROM periods WHERE store_id=1 AND year_month=?1",
+        [period], |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    let existing: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM product_external_codes WHERE store_id=1 AND external_code=?1",
+        [code], |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    if existing > 0 { return Err("Codigo ja associado a um produto; duplicidade bloqueada.".into()); }
+    tx.execute(
+        "INSERT INTO products(store_id,display_name,category_name) VALUES(1,?1,?2)",
+        params![name,category],
+    ).map_err(|e| e.to_string())?;
+    let product_id = tx.last_insert_rowid();
+    tx.execute(
+        "INSERT INTO product_external_codes(store_id,product_id,external_code) VALUES(1,?1,?2)",
+        params![product_id,code],
+    ).map_err(|e| format!("Falha ao vincular codigo: {e}"))?;
+    tx.execute(
+        "INSERT INTO product_mapping_decisions(store_id,period_id,external_code,product_id,decision_type,display_name,managerial_category) VALUES(1,?1,?2,?3,'CREATE_PRODUCT',?4,?5)",
+        params![period_id,code,product_id,name,category],
+    ).map_err(|e| format!("Falha no historico do mapeamento: {e}"))?;
+    tx.commit().map_err(|e| format!("Cadastro cancelado sem gravar: {e}"))?;
+    mapping_overview(db, period)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
