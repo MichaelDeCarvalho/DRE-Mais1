@@ -302,6 +302,35 @@ mod tests {
         assert!(external_code(&Data::String("#N/A".into())).is_none());
     }
     #[test]
+    fn manually_registers_one_sold_code_without_changing_original_financial_rows() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut db = database::open_database(&temp.path().join("mapping.sqlite")).unwrap();
+        save_legacy_catalog(&mut db, parse_legacy_catalog(&fixture()).unwrap()).unwrap();
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures");
+        database::save_reports(&mut db, "2026-09",
+            importer::parse_products(&dir.join("produtos-set-2026.xlsx")).unwrap(),
+            importer::parse_payments(&dir.join("pagamentos-set-2026.xlsx")).unwrap()).unwrap();
+        let before = mapping_overview(&db, "2026-09").unwrap();
+        assert_eq!(before.unmapped_products.len(), 29);
+        let code = before.unmapped_products[0].external_code.clone();
+        let baseline = database::load_period_summary(&db, "2026-09").unwrap();
+        let after = register_sold_product(&mut db, "2026-09", &code, "Produto revisado manualmente", "PARA COMER").unwrap();
+        assert_eq!(after.unmapped_products.len(), 28);
+        assert_eq!(after.mapped_product_codes, 92);
+        assert!(register_sold_product(&mut db, "2026-09", &code, "Duplicado", "OUTROS").is_err());
+        assert!(register_sold_product(&mut db, "2026-09", "999999999", "Inexistente", "OUTROS").is_err());
+        let entries: i64 = db.query_row("SELECT COUNT(*) FROM product_mapping_decisions WHERE external_code=?1", [&code], |r| r.get(0)).unwrap();
+        assert_eq!(entries, 1);
+        let preserved = database::load_period_summary(&db, "2026-09").unwrap();
+        assert_eq!(preserved.products_total_cents, baseline.products_total_cents);
+        assert_eq!(preserved.payments_total_cents, baseline.payments_total_cents);
+        assert_eq!(preserved.difference_cents, 0);
+        drop(db);
+        let reopened = database::open_database(&temp.path().join("mapping.sqlite")).unwrap();
+        assert_eq!(mapping_overview(&reopened, "2026-09").unwrap().unmapped_products.len(), 28);
+    }
+
+    #[test]
     fn after_reference_catalog_29_sold_codes_remain_unmapped() {
         let temp = tempfile::tempdir().unwrap();
         let mut db = database::open_database(&temp.path().join("data.sqlite")).unwrap();
