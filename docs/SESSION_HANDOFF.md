@@ -75,3 +75,11 @@ Código preparado em pacote local; GitHub não foi alterado e o pipeline não ro
 - Planilha Excel deve ter na PRIMEIRA ABA colunas exatas e nesta ordem: Codigo, Insumo, Unidade, QuantidadeCompra, CustoCompraCentavos. Exemplo: LEITE,Leite,ML,1000,650 (R$6,50 por litro). Nao tratar 650 como R$650,00.
 - Interface React: secao 06 com formulario manual, importar Excel e listar por competencia. Sem CMV ou fichas tecnicas ate validacao.
 - Aguardando CI Windows e Linux da HEAD; NOVO executavel NAO homologado. Nunca apontar usuario para nova versao antes de status aprovado e backup verificado.
+
+## 2026-10-12 — Fichas tecnicas fase 1 (em CI, nao homologadas)
+
+- User pediu continuidade e execucao com CorSys Coding; insumos e compras: primeira verificacao previa falhou no Rust, correcao de teste por codigo publicada e execução 38291335604 teve Linux SUCCESS; Windows estava em andamento.
+- Schema novo `0006_recipes.sql`: recipe_versions por produto/competencia e recipe_lines por insumo, preservando dados anteriores; user_version=6.
+- `src-tauri/src/recipes.rs`: cadastro de um insumo na ficha (codigo externo de produto ja mapeado; insumo com custo na mesma competencia; quantidade inteira >0 em unidade basica). Custo unitario teorico calculado proporcionalmente sobre custo+frete+ST da compra, sem alterar vendas/importacoes. Linha duplicada bloqueada (sem edicao).
+- `src-tauri/src/lib.rs`: comandos set_recipe_line e get_recipe_cost; `src/App.tsx`: secao inicial 07.
+- Nao assume custos importados da Base DRE antiga; nao calcula DRE/CMV mensal/estoque; sem afirmacao de homologacao GUI. Pendente CI da HEAD, teste de rollback e UX completo das fichas.
