@@ -60,7 +60,7 @@ pub fn register_detailed(db:&mut Connection,period:&str,code:&str,name:&str,unit
 }
 pub fn list(db:&Connection,period:&str)->Result<Vec<IngredientView>,String>{
  let mut st=db.prepare("SELECT i.code,i.name,i.base_unit,c.period,c.quantity_base,c.purchase_cents,c.origin,c.supplier,c.freight_cents,c.st_cents FROM ingredients i JOIN ingredient_purchase_costs c ON c.ingredient_id=i.id WHERE i.store_id=1 AND c.period=?1 ORDER BY i.code").map_err(|e|e.to_string())?;
- let rows=st.query_map([period],|r|Ok(IngredientView{code:r.get(0)?,name:r.get(1)?,base_unit:r.get(2)?,period:r.get(3)?,quantity_base:r.get(4)?,purchase_cents:r.get(5)?,origin:r.get(6)?,supplier:r.get(7)?,freight_cents:r.get(8)?,st_cents:r.get(9)?,total_cents:r.get::<_,i64>(5)?.checked_add(r.get::<_,i64>(8)?).and_then(|n|n.checked_add(r.get::<_,i64>(9)?)).ok_or(rusqlite::Error::IntegralValueOutOfRange(5,i64::MAX))?}))
+ let rows=st.query_map([period],|r|Ok(IngredientView{code:r.get(0)?,name:r.get(1)?,base_unit:r.get(2)?,period:r.get(3)?,quantity_base:r.get(4)?,purchase_cents:r.get(5)?,origin:r.get(6)?,supplier:r.get(7)?,freight_cents:r.get(8)?,st_cents:r.get(9)?,total_cents:{let price:i64=r.get(5)?;let freight:i64=r.get(8)?;let st:i64=r.get(9)?;price.checked_add(freight).and_then(|v|v.checked_add(st)).ok_or(rusqlite::Error::IntegralValueOutOfRange(5,i64::MAX))?}}))
  .map_err(|e|e.to_string())?;
  rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
 }
