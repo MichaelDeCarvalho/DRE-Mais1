@@ -29,6 +29,15 @@ export function App() {
   const [catalogStatusLoading, setCatalogStatusLoading] = useState(true);
   const [catalogInfo, setCatalogInfo] = useState<CatalogImportSummary | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [ingredientCode, setIngredientCode] = useState('');
+  const [ingredientName, setIngredientName] = useState('');
+  const [ingredientUnit, setIngredientUnit] = useState('G');
+  const [ingredientQty, setIngredientQty] = useState('');
+  const [ingredientCost, setIngredientCost] = useState('');
+  const [ingredients, setIngredients] = useState<Array<{ code: string; name: string; baseUnit: string; quantityBase: number; purchaseCents: number; origin: string }>>([]);
+  const [ingredientError, setIngredientError] = useState('');
+  const [ingredientInfo, setIngredientInfo] = useState('');
+  const [ingredientBusy, setIngredientBusy] = useState(false);
   const period = `${year}-${month}`;
   const [mappingSaving, setMappingSaving] = useState(false);
   const busy = pending || catalogLoading || dialogBusy || mappingSaving;
@@ -108,6 +117,39 @@ export function App() {
     } catch (reason) { setError(explainError(reason)); }
     finally { setMappingSaving(false); }
   }
+  async function reloadIngredients() {
+    try {
+      setIngredients(await invoke<typeof ingredients>('list_ingredients', { period }));
+      setIngredientError('');
+    } catch (e) { setIngredientError(explainError(e)); }
+  }
+  async function saveIngredient() {
+    if (ingredientBusy) return;
+    setIngredientBusy(true); setIngredientError(''); setIngredientInfo('');
+    try {
+      if (!/^\\d+$/.test(ingredientQty) || !/^\\d+$/.test(ingredientCost)) throw new Error('Quantidade e custo em centavos devem ser inteiros sem pontos ou vírgulas.');
+      await invoke('register_ingredient', {
+        period, code: ingredientCode, name: ingredientName, baseUnit: ingredientUnit,
+        quantityBase: Number(ingredientQty), purchaseCents: Number(ingredientCost),
+      });
+      setIngredientInfo('Insumo e custo cadastrados nesta competência.');
+      setIngredientCode('');setIngredientName('');setIngredientQty('');setIngredientCost('');
+      await reloadIngredients();
+    } catch (e) { setIngredientError(explainError(e)); }
+    finally { setIngredientBusy(false); }
+  }
+  async function importIngredientFile() {
+    if (ingredientBusy) return;
+    setIngredientBusy(true);setIngredientError('');setIngredientInfo('');
+    try {
+      const chosen = await open({ multiple: false, directory: false, title: 'Planilha de insumos e custos', filters: [{ name: 'Excel', extensions: ['xls', 'xlsx'] }] });
+      if (typeof chosen !== 'string') return;
+      const data = await invoke<{ imported: number; filename: string }>('import_ingredients_excel', { period, path: chosen });
+      setIngredientInfo(`${data.imported} insumos importados de ${data.filename}.`);
+      await reloadIngredients();
+    } catch (e) { setIngredientError(explainError(e)); }
+    finally { setIngredientBusy(false); }
+  }
   async function submit() {
     if (!productsPath || !paymentsPath || !canSubmit) return;
     setPending(true); setError(null); setResult(null); setEditingCode(null); setFilter('');
@@ -182,6 +224,26 @@ export function App() {
             {result.unmappedProducts.length > 0 ? <><div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th className="num">Quantidade</th><th className="num">Vendas</th><th>Status</th><th>Ação</th></tr></thead><tbody>{visibleProducts.map(p => <tr key={p.externalCode}><td className="mono">{p.externalCode}</td><td>{p.name}</td><td>{p.category}</td><td className="num">{p.quantity}</td><td className="num">{brl(p.salesCents)}</td><td><span className="pending-tag">Não mapeado</span></td><td><button type="button" className="outline-button" disabled={busy} onClick={() => beginMapping(p.externalCode, p.name, p.category)}>Cadastrar</button></td></tr>)}</tbody></table></div><p className="footnote">{visibleProducts.length} de {result.unmappedProducts.length} pendências exibidas. O resultado depende dos códigos atualmente cadastrados. A Base DRE pode ser carregada pela seção opcional acima; os códigos com erro permanecem pendentes.</p></> : <div className="empty-state">Nenhum código externo pendente de mapeamento.</div>}
           </section>
         </> : <section className="empty-state"><strong>Pronto para validar setembro de 2026</strong><p>Escolha os dois arquivos e execute a importação. A conciliação aparecerá aqui.</p></section>}
+        <section className="section-block" aria-labelledby="ingredient-heading">
+          <div className="section-heading"><span className="step">06</span><div><h2 id="ingredient-heading">Insumos e custos de compra — cadastro inicial</h2><p>Independente dos relatórios de venda. Custos por competência, sem calcular CMV.</p></div></div>
+          <p>Unidades básicas: G (gramas), ML (mililitros) e UN (unidades). Quantidade de compra na unidade básica. Custo em centavos inteiros. Exemplo: pacote de 1 kg por R$ 25,90 → G, quantidade 1000, custo 2590.</p>
+          <div className="selectors">
+            <label>Código<input value={ingredientCode} maxLength={40} disabled={ingredientBusy} onChange={e => setIngredientCode(e.target.value)} /></label>
+            <label>Insumo<input value={ingredientName} maxLength={200} disabled={ingredientBusy} onChange={e => setIngredientName(e.target.value)} /></label>
+            <label>Unidade<select value={ingredientUnit} disabled={ingredientBusy} onChange={e => setIngredientUnit(e.target.value)}><option>G</option><option>ML</option><option>UN</option></select></label>
+            <label>Quantidade compra<input value={ingredientQty} inputMode="numeric" disabled={ingredientBusy} onChange={e => setIngredientQty(e.target.value)} placeholder="1000"/></label>
+            <label>Custo compra (centavos)<input value={ingredientCost} inputMode="numeric" disabled={ingredientBusy} onChange={e => setIngredientCost(e.target.value)} placeholder="2590"/></label>
+            <button type="button" className="primary-button" disabled={ingredientBusy || !ingredientCode.trim() || !ingredientName.trim() || !ingredientQty || !ingredientCost} onClick={saveIngredient}>Cadastrar insumo</button>
+          </div>
+          <div className="action-line">
+            <p>Excel: primeira aba, cabeçalhos exatos Codigo, Insumo, Unidade, QuantidadeCompra, CustoCompraCentavos. Todos os custos são da competência selecionada; não há sobrescrita.</p>
+            <button type="button" className="outline-button" disabled={ingredientBusy} onClick={importIngredientFile}>Importar insumos do Excel</button>
+            <button type="button" className="outline-button" disabled={ingredientBusy} onClick={reloadIngredients}>Consultar insumos</button>
+          </div>
+          {ingredientError && <div className="feedback feedback-error" role="alert">{ingredientError}</div>}
+          {ingredientInfo && <div className="feedback feedback-info" role="status">{ingredientInfo}</div>}
+          {ingredients.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Insumo</th><th>Unidade</th><th>Qtd. compra</th><th>Custo compra</th><th>Origem</th></tr></thead><tbody>{ingredients.map(i => <tr key={i.code}><td>{i.code}</td><td>{i.name}</td><td>{i.baseUnit}</td><td className="num">{i.quantityBase}</td><td className="num">{brl(i.purchaseCents)}</td><td>{i.origin}</td></tr>)}</tbody></table></div>}
+        </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
     </div>
