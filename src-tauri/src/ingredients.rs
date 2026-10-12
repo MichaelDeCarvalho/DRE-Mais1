@@ -54,8 +54,9 @@ pub fn register(db:&mut Connection,period:&str,code:&str,name:&str,unit:&str,qty
 }
 pub fn list(db:&Connection,period:&str)->Result<Vec<IngredientView>,String>{
  let mut st=db.prepare("SELECT i.code,i.name,i.base_unit,c.period,c.quantity_base,c.purchase_cents,c.origin FROM ingredients i JOIN ingredient_purchase_costs c ON c.ingredient_id=i.id WHERE i.store_id=1 AND c.period=?1 ORDER BY i.code").map_err(|e|e.to_string())?;
- st.query_map([period],|r|Ok(IngredientView{code:r.get(0)?,name:r.get(1)?,base_unit:r.get(2)?,period:r.get(3)?,quantity_base:r.get(4)?,purchase_cents:r.get(5)?,origin:r.get(6)?}))
- .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
+ let rows=st.query_map([period],|r|Ok(IngredientView{code:r.get(0)?,name:r.get(1)?,base_unit:r.get(2)?,period:r.get(3)?,quantity_base:r.get(4)?,purchase_cents:r.get(5)?,origin:r.get(6)?}))
+ .map_err(|e|e.to_string())?;
+ rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
 }
 fn cell(c:&Data)->String{match c{Data::Empty=>String::new(),Data::String(s)=>s.trim().into(),_=>c.to_string().trim().into()}}
 fn int_cell(c:&Data,field:&str,line:usize)->Result<i64,String>{
