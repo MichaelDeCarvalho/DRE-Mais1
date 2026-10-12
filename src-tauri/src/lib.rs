@@ -57,6 +57,18 @@ async fn review_mappings(app: tauri::AppHandle, period: String) -> Result<catalo
 }
 
 #[tauri::command]
+async fn register_sold_product(
+    app: tauri::AppHandle, period: String, external_code: String,
+    display_name: String, managerial_category: String,
+) -> Result<catalog::MappingOverview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut db = state.db.lock().map_err(|_| "Banco temporariamente inacessivel".to_string())?;
+        catalog::register_sold_product(&mut db, &period, &external_code, &display_name, &managerial_category)
+    }).await.map_err(|e| format!("Falha ao cadastrar produto: {e}"))?
+}
+
+#[tauri::command]
 async fn load_period_summary(app: tauri::AppHandle, period: String) -> Result<importer::ImportSummary, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -77,7 +89,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
