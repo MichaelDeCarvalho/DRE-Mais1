@@ -80,11 +80,11 @@ async fn load_period_summary(app: tauri::AppHandle, period: String) -> Result<im
 
 #[tauri::command]
 async fn register_ingredient(app: tauri::AppHandle, period: String, code: String, name: String,
- base_unit: String, quantity_base: i64, purchase_cents: i64) -> Result<(), String> {
+ base_unit: String, quantity_base: i64, purchase_cents: i64, supplier: String, freight_cents: i64, st_cents: i64) -> Result<(), String> {
  tauri::async_runtime::spawn_blocking(move || {
   let state=app.state::<AppState>();
   let mut db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
-  ingredients::register(&mut db,&period,&code,&name,&base_unit,quantity_base,purchase_cents)
+  ingredients::register_detailed(&mut db,&period,&code,&name,&base_unit,quantity_base,purchase_cents,&supplier,freight_cents,st_cents)
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
