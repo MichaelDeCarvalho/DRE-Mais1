@@ -20,6 +20,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportSummary | null>(null);
   const [filter, setFilter] = useState('');
+  const [editingCode, setEditingCode] = useState<string | null>(null);
+  const [editedName, setEditedName] = useState('');
+  const [editedCategory, setEditedCategory] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [dialogBusy, setDialogBusy] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
@@ -27,7 +30,8 @@ export function App() {
   const [catalogInfo, setCatalogInfo] = useState<CatalogImportSummary | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const period = `${year}-${month}`;
-  const busy = pending || catalogLoading || dialogBusy;
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const busy = pending || catalogLoading || dialogBusy || mappingSaving;
   const canSubmit = /^20\d\d$/.test(year) && Boolean(productsPath && paymentsPath) && !busy;
   useEffect(() => {
     let active = true;
@@ -48,6 +52,7 @@ export function App() {
       const chosen = await open({ multiple: false, directory: false, title: which === 'products' ? 'Selecione o relatório de produtos' : 'Selecione o relatório de pagamentos', filters: [{ name: 'Planilhas Excel', extensions: ['xls', 'xlsx'] }] });
       if (typeof chosen === 'string') {
         setResult(null);
+        setEditingCode(null);
         if (which === 'products') setProductsPath(chosen);
         else setPaymentsPath(chosen);
       }
@@ -76,9 +81,36 @@ export function App() {
     } catch (e) { setCatalogError(explainError(e)); }
     finally { setCatalogLoading(false); setDialogBusy(false); }
   }
+  function beginMapping(code: string, name: string, category: string) {
+    setEditingCode(code);
+    setEditedName(name);
+    setEditedCategory(category);
+    setError(null);
+  }
+  async function saveMapping() {
+    if (!editingCode || busy) return;
+    const code = editingCode;
+    setMappingSaving(true);
+    setError(null);
+    try {
+      const mapping = await invoke<MappingOverview>('register_sold_product', {
+        period, externalCode: code, displayName: editedName,
+        managerialCategory: editedCategory,
+      });
+      setResult(previous => previous ? {
+        ...previous, soldProductCodes: mapping.soldProductCodes,
+        mappedProductCodes: mapping.mappedProductCodes,
+        unmappedProducts: mapping.unmappedProducts,
+      } : previous);
+      setEditingCode(null);
+      setEditedName('');
+      setEditedCategory('');
+    } catch (reason) { setError(explainError(reason)); }
+    finally { setMappingSaving(false); }
+  }
   async function submit() {
     if (!productsPath || !paymentsPath || !canSubmit) return;
-    setPending(true); setError(null); setResult(null); setFilter('');
+    setPending(true); setError(null); setResult(null); setEditingCode(null); setFilter('');
     try {
       const data = await invoke<ImportSummary>('import_reports', { period, productsPath, paymentsPath });
       setResult(data);
@@ -104,7 +136,7 @@ export function App() {
         <header className="page-header"><div><span className="eyebrow">MARCO FUNCIONAL 01</span><h1>Importação e conciliação</h1><p>Selecione os relatórios originais e valide a movimentação do mês.</p></div><div className="header-tag">Processamento offline</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
-          <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { setYear(e.target.value); setResult(null); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { setMonth(e.target.value); setResult(null); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="outline-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>Consultar importação salva</button></div>
+          <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { setYear(e.target.value); setResult(null); setEditingCode(null); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { setMonth(e.target.value); setResult(null); setEditingCode(null); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="outline-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>Consultar importação salva</button></div>
         </section>
         <section className="section-block catalog-section" aria-labelledby="catalog-heading">
           <div className="section-heading"><span className="step">A</span><div><h2 id="catalog-heading">Cadastro legado de referência (opcional)</h2><p>Carregue uma única vez a planilha consolidada com a aba Base DRE, para identificar códigos já conhecidos. Não importa fichas técnicas nem valores de CMV.</p></div></div>
@@ -136,7 +168,18 @@ export function App() {
           <section className="section-block" aria-labelledby="products-heading"><div className="section-heading"><span className="step">05</span><div><h2 id="products-heading">Produtos sem mapeamento</h2><p>Identificados por código externo, não por semelhança de nome.</p></div></div>
             <div className="mapping-stats"><div><strong>{result.soldProductCodes}</strong><span>Códigos vendidos</span></div><div><strong>{result.mappedProductCodes}</strong><span>Mapeados</span></div><div><strong>{result.unmappedProducts.length}</strong><span>Sem cadastro</span></div></div>
             <div className="table-header"><h3>Pendências de cadastro</h3><input type="search" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Buscar código, produto ou categoria" aria-label="Filtrar produtos pendentes" /></div>
-            {result.unmappedProducts.length > 0 ? <><div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th className="num">Quantidade</th><th className="num">Vendas</th><th>Status</th></tr></thead><tbody>{visibleProducts.map(p => <tr key={p.externalCode}><td className="mono">{p.externalCode}</td><td>{p.name}</td><td>{p.category}</td><td className="num">{p.quantity}</td><td className="num">{brl(p.salesCents)}</td><td><span className="pending-tag">Não mapeado</span></td></tr>)}</tbody></table></div><p className="footnote">{visibleProducts.length} de {result.unmappedProducts.length} pendências exibidas. O resultado depende dos códigos atualmente cadastrados. A Base DRE pode ser carregada pela seção opcional acima; os códigos com erro permanecem pendentes.</p></> : <div className="empty-state">Nenhum código externo pendente de mapeamento.</div>}
+            {editingCode && <div className="feedback feedback-info" role="region" aria-label="Cadastrar produto pendente">
+              <strong>Cadastro manual do código {editingCode}</strong>
+              <p>Confirme nome e categoria gerencial. A venda original e a categoria de origem não serão modificadas.</p>
+              <div className="selectors">
+                <label>Nome do produto<input value={editedName} maxLength={200} disabled={busy} onChange={e => setEditedName(e.target.value)} /></label>
+                <label>Categoria gerencial<input value={editedCategory} maxLength={120} disabled={busy} onChange={e => setEditedCategory(e.target.value)} /></label>
+                <button type="button" className="primary-button" disabled={busy || !editedName.trim() || !editedCategory.trim()} onClick={saveMapping}>Salvar cadastro</button>
+                <button type="button" className="outline-button" disabled={busy} onClick={() => setEditingCode(null)}>Cancelar</button>
+              </div>
+              {error && <div className="feedback feedback-error" role="alert">{error}</div>}
+            </div>}
+            {result.unmappedProducts.length > 0 ? <><div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th className="num">Quantidade</th><th className="num">Vendas</th><th>Status</th><th>Ação</th></tr></thead><tbody>{visibleProducts.map(p => <tr key={p.externalCode}><td className="mono">{p.externalCode}</td><td>{p.name}</td><td>{p.category}</td><td className="num">{p.quantity}</td><td className="num">{brl(p.salesCents)}</td><td><span className="pending-tag">Não mapeado</span></td><td><button type="button" className="outline-button" disabled={busy} onClick={() => beginMapping(p.externalCode, p.name, p.category)}>Cadastrar</button></td></tr>)}</tbody></table></div><p className="footnote">{visibleProducts.length} de {result.unmappedProducts.length} pendências exibidas. O resultado depende dos códigos atualmente cadastrados. A Base DRE pode ser carregada pela seção opcional acima; os códigos com erro permanecem pendentes.</p></> : <div className="empty-state">Nenhum código externo pendente de mapeamento.</div>}
           </section>
         </> : <section className="empty-state"><strong>Pronto para validar setembro de 2026</strong><p>Escolha os dois arquivos e execute a importação. A conciliação aparecerá aqui.</p></section>}
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
