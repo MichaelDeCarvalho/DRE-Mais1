@@ -1,6 +1,7 @@
 mod catalog;
 mod database;
 mod importer;
+mod ingredients;
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Mutex};
@@ -77,6 +78,33 @@ async fn load_period_summary(app: tauri::AppHandle, period: String) -> Result<im
     }).await.map_err(|e| format!("Falha ao consultar período: {e}"))?
 }
 
+#[tauri::command]
+async fn register_ingredient(app: tauri::AppHandle, period: String, code: String, name: String,
+ base_unit: String, quantity_base: i64, purchase_cents: i64) -> Result<(), String> {
+ tauri::async_runtime::spawn_blocking(move || {
+  let state=app.state::<AppState>();
+  let mut db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  ingredients::register(&mut db,&period,&code,&name,&base_unit,quantity_base,purchase_cents)
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+async fn list_ingredients(app: tauri::AppHandle, period: String) -> Result<Vec<ingredients::IngredientView>,String> {
+ tauri::async_runtime::spawn_blocking(move || {
+  let state=app.state::<AppState>();
+  let db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  ingredients::list(&db,&period)
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+async fn import_ingredients_excel(app: tauri::AppHandle, period: String, path: String) -> Result<ingredients::ExcelSummary,String> {
+ tauri::async_runtime::spawn_blocking(move || {
+  let file=PathBuf::from(path);
+  let state=app.state::<AppState>();
+  let mut db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  ingredients::import_excel(&mut db,&period,&file)
+ }).await.map_err(|e|e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -89,7 +117,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
