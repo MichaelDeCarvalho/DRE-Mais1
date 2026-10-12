@@ -66,3 +66,12 @@ Código preparado em pacote local; GitHub não foi alterado e o pipeline não ro
 - Usuario informou ter concluido o cadastro dos restantes: **120 codigos vendidos, 120 mapeados, zero pendentes**. Evidencia e relato do operador, nao copia auditada do banco atual.
 - Nao substituir nem migrar banco Windows automaticamente. Backup anterior a mapeamento (176 KB) e importante para restauracao; backup atualizado pos-mapeamento deve ser feito pelo usuario.
 - Proxima etapa: consolidar integridade/backup pos-cadastro e projetar cadastros de insumos/fichas tecnicas com regras de unidade, rendimento, versoes de custo, custos por competencia e auditabilidade; NAO presumir CMV/DRE finalizado.
+
+## 2026-10-12 — Etapa insumos e custos (codigo em validacao)
+
+- Usuario confirmou backup atualizado de 120 codigos mapeados, pediu cadastro MANUAL E EXCEL.
+- Migration 0004: ingredients, ingredient_purchase_costs por competencia, ingredient_excel_imports com bytes/sha256 do original. Migracao aditiva que preserva importacoes, produtos e periodos anteriores.
+- Backend ingredients.rs: unidade basica G/ML/UN, quantidade de compra positiva inteira na unidade basica, custo de compra em centavos inteiros, rejeita nome/unidade divergentes para codigo ja cadastrado, rejeita duplicidade de custo por competencia, Excel transacional all-or-nothing.
+- Planilha Excel deve ter na PRIMEIRA ABA colunas exatas e nesta ordem: Codigo, Insumo, Unidade, QuantidadeCompra, CustoCompraCentavos. Exemplo: LEITE,Leite,ML,1000,650 (R$6,50 por litro). Nao tratar 650 como R$650,00.
+- Interface React: secao 06 com formulario manual, importar Excel e listar por competencia. Sem CMV ou fichas tecnicas ate validacao.
+- Aguardando CI Windows e Linux da HEAD; NOVO executavel NAO homologado. Nunca apontar usuario para nova versao antes de status aprovado e backup verificado.
