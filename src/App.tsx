@@ -127,7 +127,7 @@ export function App() {
     if (ingredientBusy) return;
     setIngredientBusy(true); setIngredientError(''); setIngredientInfo('');
     try {
-      if (!/^\\d+$/.test(ingredientQty) || !/^\\d+$/.test(ingredientCost)) throw new Error('Quantidade e custo em centavos devem ser inteiros sem pontos ou vírgulas.');
+      if (!/^\d+$/.test(ingredientQty) || !/^\d+$/.test(ingredientCost)) throw new Error('Quantidade e custo em centavos devem ser inteiros sem pontos ou vírgulas.');
       await invoke('register_ingredient', {
         period, code: ingredientCode, name: ingredientName, baseUnit: ingredientUnit,
         quantityBase: Number(ingredientQty), purchaseCents: Number(ingredientCost),
