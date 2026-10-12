@@ -10,7 +10,7 @@ use crate::importer;
 pub struct IngredientView {
  pub code: String, pub name: String, pub base_unit: String,
  pub period: String, pub quantity_base: i64, pub purchase_cents: i64,
- pub origin: String,
+ pub origin: String, pub supplier: String, pub freight_cents: i64, pub st_cents: i64, pub total_cents: i64,
 }
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
@@ -28,8 +28,11 @@ fn check(period:&str,code:&str,name:&str,unit:&str,qty:i64,cents:i64)->Result<()
  }
  Ok(())
 }
-fn insert(tx:&Transaction<'_>,period:&str,code:&str,name:&str,unit:&str,qty:i64,cents:i64,origin:&str)->Result<(),String>{
+fn insert(tx:&Transaction<'_>,period:&str,code:&str,name:&str,unit:&str,qty:i64,cents:i64,origin:&str,supplier:&str,freight:i64,st:i64)->Result<(),String>{
  check(period,code,name,unit,qty,cents)?;
+ if supplier.len()>200 || freight<0 || st<0 || cents.checked_add(freight).and_then(|v|v.checked_add(st)).is_none() {
+  return Err("Fornecedor, frete ou ST invalidos; confira os centavos e o limite monetario.".into());
+ }
  let existing:Option<(i64,String,String)>=tx.query_row(
   "SELECT id,name,base_unit FROM ingredients WHERE store_id=1 AND code=?1",[code],
   |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(|e|e.to_string())?;
@@ -41,20 +44,23 @@ fn insert(tx:&Transaction<'_>,period:&str,code:&str,name:&str,unit:&str,qty:i64,
     params![code,name,unit]).map_err(|e|e.to_string())?;
   tx.last_insert_rowid()
  };
- tx.execute("INSERT INTO ingredient_purchase_costs(ingredient_id,period,quantity_base,purchase_cents,origin) VALUES(?1,?2,?3,?4,?5)",
-    params![id,period,qty,cents,origin])
+ tx.execute("INSERT INTO ingredient_purchase_costs(ingredient_id,period,quantity_base,purchase_cents,origin,supplier,freight_cents,st_cents) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+    params![id,period,qty,cents,origin,supplier,freight,st])
   .map_err(|_|format!("Custo do insumo {code} ja cadastrado para {period}; sobrescrita bloqueada."))?;
  Ok(())
 }
 pub fn register(db:&mut Connection,period:&str,code:&str,name:&str,unit:&str,qty:i64,cents:i64)->Result<(),String>{
+ register_detailed(db,period,code,name,unit,qty,cents,"",0,0)
+}
+pub fn register_detailed(db:&mut Connection,period:&str,code:&str,name:&str,unit:&str,qty:i64,cents:i64,supplier:&str,freight:i64,st:i64)->Result<(),String>{
  let (code,name)=(code.trim(),name.trim());
  let tx=db.transaction().map_err(|e|e.to_string())?;
- insert(&tx,period,code,name,unit,qty,cents,"MANUAL")?;
+ insert(&tx,period,code,name,unit,qty,cents,"MANUAL",supplier.trim(),freight,st)?;
  tx.commit().map_err(|e|e.to_string())
 }
 pub fn list(db:&Connection,period:&str)->Result<Vec<IngredientView>,String>{
- let mut st=db.prepare("SELECT i.code,i.name,i.base_unit,c.period,c.quantity_base,c.purchase_cents,c.origin FROM ingredients i JOIN ingredient_purchase_costs c ON c.ingredient_id=i.id WHERE i.store_id=1 AND c.period=?1 ORDER BY i.code").map_err(|e|e.to_string())?;
- let rows=st.query_map([period],|r|Ok(IngredientView{code:r.get(0)?,name:r.get(1)?,base_unit:r.get(2)?,period:r.get(3)?,quantity_base:r.get(4)?,purchase_cents:r.get(5)?,origin:r.get(6)?}))
+ let mut st=db.prepare("SELECT i.code,i.name,i.base_unit,c.period,c.quantity_base,c.purchase_cents,c.origin,c.supplier,c.freight_cents,c.st_cents FROM ingredients i JOIN ingredient_purchase_costs c ON c.ingredient_id=i.id WHERE i.store_id=1 AND c.period=?1 ORDER BY i.code").map_err(|e|e.to_string())?;
+ let rows=st.query_map([period],|r|Ok(IngredientView{code:r.get(0)?,name:r.get(1)?,base_unit:r.get(2)?,period:r.get(3)?,quantity_base:r.get(4)?,purchase_cents:r.get(5)?,origin:r.get(6)?,supplier:r.get(7)?,freight_cents:r.get(8)?,st_cents:r.get(9)?,total_cents:r.get::<_,i64>(5)?.checked_add(r.get::<_,i64>(8)?).and_then(|n|n.checked_add(r.get::<_,i64>(9)?)).ok_or(rusqlite::Error::IntegralValueOutOfRange(5,i64::MAX))?}))
  .map_err(|e|e.to_string())?;
  rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())
 }
@@ -75,6 +81,9 @@ pub fn import_excel(db:&mut Connection,period:&str,path:&Path)->Result<ExcelSumm
  if headers.len()<5||expected.iter().enumerate().any(|(i,h)|cell(&headers[i])!=*h){
   return Err("Cabecalho esperado: Codigo, Insumo, Unidade, QuantidadeCompra, CustoCompraCentavos (nesta ordem).".into());
  }
+ let detail_headers=["Fornecedor","FreteCentavos","STCentavos"];
+ let detailed=headers.len()>=8 && detail_headers.iter().enumerate().all(|(i,h)|cell(&headers[i+5])==*h);
+ if headers.len()>5 && !detailed {return Err("Colunas adicionais devem ser: Fornecedor, FreteCentavos, STCentavos, nesta ordem.".into());}
  let mut entries=Vec::new();let mut seen=BTreeSet::new();
  for (idx,row) in iter.enumerate(){
   if row.iter().all(|c|cell(c).is_empty()){continue;}
@@ -85,11 +94,14 @@ pub fn import_excel(db:&mut Connection,period:&str,path:&Path)->Result<ExcelSumm
   let qty=int_cell(get(3),"QuantidadeCompra",line)?;let cents=int_cell(get(4),"CustoCompraCentavos",line)?;
   check(period,&code,&name,&unit,qty,cents).map_err(|e|format!("Linha {line}: {e}"))?;
   if !seen.insert(code.clone()){return Err(format!("Codigo duplicado no Excel: {code}"));}
-  entries.push((code,name,unit,qty,cents));
+  let supplier=if detailed {cell(get(5))} else {String::new()};
+  let freight=if detailed {int_cell(get(6),"FreteCentavos",line)?} else {0};
+  let st=if detailed {int_cell(get(7),"STCentavos",line)?} else {0};
+  entries.push((code,name,unit,qty,cents,supplier,freight,st));
  }
  if entries.is_empty(){return Err("Excel sem insumos para importar.".into());}
  let tx=db.transaction().map_err(|e|e.to_string())?;
- for (code,name,unit,qty,cents) in &entries {insert(&tx,period,code,name,unit,*qty,*cents,"EXCEL")?;}
+ for (code,name,unit,qty,cents,supplier,freight,st) in &entries {insert(&tx,period,code,name,unit,*qty,*cents,"EXCEL",supplier,*freight,*st)?;}
  tx.execute("INSERT INTO ingredient_excel_imports(store_id,period,filename,file_sha256,original_bytes,rows_imported) VALUES(1,?1,?2,?3,?4,?5)",
   params![period,file.filename,file.sha256,file.raw_bytes,entries.len() as i64]).map_err(|e|format!("Falha ao registrar arquivo original: {e}"))?;
  tx.commit().map_err(|e|e.to_string())?;
@@ -108,9 +120,11 @@ mod tests {
    assert!(register(&mut db,"2026-09","LEITE","Leite","ML",1000,999).is_err());
    assert!(register(&mut db,"2026-10","LEITE","Leite","G",1000,650).is_err());
    register(&mut db,"2026-10","LEITE","Leite","ML",1000,720).unwrap();
+   register_detailed(&mut db,"2026-09","CAFE","Cafe","G",5000,57385,"FORNECEDOR",500,300).unwrap();
   }
   let db=database::open_database(&p).unwrap();
   assert_eq!(list(&db,"2026-09").unwrap()[0].purchase_cents,650);
   assert_eq!(list(&db,"2026-10").unwrap()[0].purchase_cents,720);
+  assert_eq!(list(&db,"2026-09").unwrap().iter().find(|i|i.code=="CAFE").unwrap().total_cents,58185);
  }
 }
