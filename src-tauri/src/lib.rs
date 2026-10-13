@@ -112,11 +112,11 @@ async fn import_ingredients_excel(app: tauri::AppHandle, period: String, path: S
 }
 
 #[tauri::command]
-async fn set_recipe_line(app: tauri::AppHandle,period:String,product_code:String,ingredient_code:String,quantity_base:i64)->Result<recipes::RecipeCost,String>{
+async fn set_recipe_line(app: tauri::AppHandle,period:String,product_code:String,ingredient_code:String,quantity_milli_base:i64)->Result<recipes::RecipeCost,String>{
  tauri::async_runtime::spawn_blocking(move||{
   let state=app.state::<AppState>();
   let mut db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
-  recipes::set_line(&mut db,&period,&product_code,&ingredient_code,quantity_base)
+  recipes::set_line_milli(&mut db,&period,&product_code,&ingredient_code,quantity_milli_base)
  }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
