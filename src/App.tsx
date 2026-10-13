@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { brl, periodLabel } from './format';
 import { consultPeriodModules, nextCompetence } from './competence';
 import { parseQuantityMilliBase } from './quantity';
+import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
@@ -133,6 +134,7 @@ export function App() {
   const [catalogInfo, setCatalogInfo] = useState<CatalogImportSummary | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [recipeProduct, setRecipeProduct] = useState('');
+  const [recipeProductSearch, setRecipeProductSearch] = useState('');
   const [recipeIngredient, setRecipeIngredient] = useState('');
   const [recipeQty, setRecipeQty] = useState('');
   const [recipeError, setRecipeError] = useState('');
@@ -391,7 +393,7 @@ export function App() {
     setViewedPeriod(null);
     if(clearInputs){
       setProductsPath(null);setPaymentsPath(null);
-      setRecipeProduct('');setRecipeIngredient('');setRecipeQty('');setRecipeApprovalNote('');
+      setRecipeProduct('');setRecipeProductSearch('');setRecipeIngredient('');setRecipeQty('');setRecipeApprovalNote('');
       setIngredientCode('');setIngredientName('');setIngredientQty('');setIngredientCost('');
       setIngredientSupplier('');setIngredientFreight('0');setIngredientSt('0');
       setSalePriceCode('');setSalePriceCents('');
@@ -441,6 +443,14 @@ export function App() {
     try { await refreshPeriod(period); }
     catch(e){setError(explainError(e));}
     finally {setPending(false);}
+  }
+  const recipeCandidates=findRecipeCandidates(costRows,recipeProductSearch);
+  const selectedRecipeRow=costRows.find(row=>row.productCode===recipeProduct);
+  const selectedRecipeApproved=selectedRecipeRow?.status==='FICHA_APROVADA'||Boolean(recipeApprovalMessage);
+  const hasTestIngredient=Boolean(recipeDetail?.lines.some(line=>line.ingredientCode.toUpperCase().includes('TESTE')));
+  function selectRecipeProduct(code:string){
+    setRecipeProduct(code);setRecipeProductSearch('');setRecipeIngredient('');setRecipeQty('');
+    setRecipeCost(null);setRecipeDetail(null);setRecipeApprovalNote('');setRecipeApprovalMessage('');setRecipeError('');
   }
   const visibleProducts = result?.unmappedProducts.filter((p) => `${p.externalCode} ${p.name} ${p.category}`.toLocaleLowerCase('pt-BR').includes(filter.toLocaleLowerCase('pt-BR'))) || [];
   return (
@@ -533,17 +543,40 @@ export function App() {
         </section>
         <section className="section-block" aria-labelledby="recipe-heading">
           <div className="section-heading"><span className="step">07</span><div><h2 id="recipe-heading">Ficha técnica — custo teórico unitário</h2><p>Vincule quantidades consumidas ao código do produto e ao insumo cadastrado. Não calcula estoque nem CMV contábil.</p></div></div>
-          <div className="selectors">
-            <label>Código do produto vendido<input value={recipeProduct} disabled={recipeBusy} onChange={e=>{setRecipeProduct(e.target.value);setRecipeCost(null);setRecipeDetail(null);}} placeholder="Código externo já mapeado"/></label>
-            <label>Código do insumo<input value={recipeIngredient} disabled={recipeBusy} onChange={e=>setRecipeIngredient(e.target.value)} placeholder="Ex.: LEITE"/></label>
-            <label>Consumo (G, ML ou UN) — aceita fração<input value={recipeQty} disabled={recipeBusy} inputMode="decimal" onChange={e=>setRecipeQty(e.target.value)} placeholder="Ex.: 11,5 ou 150" /></label>
-            <button type="button" className="primary-button" disabled={recipeBusy || !recipeProduct.trim() || !recipeIngredient.trim() || !recipeQty.trim()} onClick={saveRecipeLine}>Adicionar ingrediente à ficha</button>
-            <button type="button" className="outline-button" disabled={recipeBusy || !recipeProduct.trim()} onClick={inspectRecipe}>Consultar custo da ficha</button>
+          <div className="recipe-selection" role="region" aria-label="Selecionar produto vendido para ficha técnica">
+            <label htmlFor="recipe-product-search">Localizar produto vendido pelo nome ou código</label>
+            <input id="recipe-product-search" type="search" value={recipeProductSearch}
+              disabled={recipeBusy||busy} onChange={e=>setRecipeProductSearch(e.target.value)}
+              placeholder="Ex.: cappuccino, café ou código" />
+            {costRows.length>0 ? <>
+              <p className="footnote">Selecione um produto mapeado da competência {periodLabel(period)}. Prioridade para fichas pendentes. {recipeCandidates.length} opção(ões) exibidas.</p>
+              {recipeCandidates.length>0
+                ? <div className="recipe-choices">{recipeCandidates.map(product=><button
+                    type="button" className={recipeProduct===product.productCode?'recipe-choice selected':'recipe-choice'}
+                    key={product.productCode} disabled={busy} aria-pressed={recipeProduct===product.productCode}
+                    onClick={()=>selectRecipeProduct(product.productCode)}>
+                      <strong>{product.productName}</strong><span className="mono">{product.productCode}</span>
+                      <small>{recipeStatusLabel(product.status)}</small>
+                    </button>)}</div>
+                : <p className="footnote">Nenhum produto mapeado encontrado nesta busca.</p>}
+            </> : <p className="footnote">Clique em Consultar competência para carregar a lista de produtos vendidos. Enquanto isso, você ainda pode informar o código manualmente.</p>}
+            {selectedRecipeRow && <p className="recipe-selected"><strong>Selecionado:</strong> {selectedRecipeRow.productName} · {selectedRecipeRow.productCode} · {recipeStatusLabel(selectedRecipeRow.status)}</p>}
           </div>
-          <p>Consumo permite até três casas decimais com vírgula (ex.: 11,5 G ou 0,250 UN). O vínculo de cada insumo é único por produto e competência. Fichas aprovadas permanecem bloqueadas; correções exigirão versionamento e revisão controlada.</p>
+          <div className="selectors">
+            <label>Código do produto vendido<input value={recipeProduct} disabled={recipeBusy||busy} onChange={e=>selectRecipeProduct(e.target.value)} placeholder="Selecione acima ou informe o código"/></label>
+            <label>Código do insumo<input list="recipe-ingredient-options" value={recipeIngredient} disabled={recipeBusy||busy} onChange={e=>setRecipeIngredient(e.target.value)} placeholder="Busque código ou selecione abaixo"/></label>
+            <datalist id="recipe-ingredient-options">{ingredients.map(ingredient=><option key={ingredient.code} value={ingredient.code} label={`${ingredient.name} — ${ingredient.baseUnit} — ${brl(ingredient.totalCents)}`}/>)}</datalist>
+            <label>Consumo (G, ML ou UN) — aceita fração<input value={recipeQty} disabled={recipeBusy} inputMode="decimal" onChange={e=>setRecipeQty(e.target.value)} placeholder="Ex.: 11,5 ou 150" /></label>
+            <button type="button" className="primary-button" disabled={busy || selectedRecipeApproved || !recipeProduct.trim() || !recipeIngredient.trim() || !recipeQty.trim()} onClick={saveRecipeLine}>Adicionar ingrediente à ficha</button>
+            <button type="button" className="outline-button" disabled={busy || !recipeProduct.trim()} onClick={inspectRecipe}>Consultar custo da ficha</button>
+          </div>
+          <p>Consumo permite até três casas decimais com vírgula (ex.: 11,5 G ou 0,250 UN). Selecione apenas produtos mapeados e insumos com custo registrado na mesma competência. Fichas aprovadas permanecem bloqueadas.</p>
+          {selectedRecipeApproved && <div className="feedback feedback-info" role="status">Ficha aprovada: não é possível adicionar ingredientes nem alterar a composição. Consulte os detalhes abaixo.</div>}
+          {ingredients.length===0 && <p className="footnote">Não há insumos com custo carregados nesta competência. Cadastre custos de compra e consulte a competência antes de montar fichas reais.</p>}
+          {hasTestIngredient && <div className="feedback feedback-error" role="alert">Ficha com insumo de teste identificado. Não aprove como receita real.</div>}
           {recipeDetail && <div className="selectors">
             <label>Conferência da ficha (justificativa obrigatória)<input value={recipeApprovalNote} maxLength={500} disabled={recipeBusy} onChange={e=>setRecipeApprovalNote(e.target.value)} placeholder="Conferi todos os insumos e quantidades da receita"/></label>
-            <button type="button" className="primary-button" disabled={recipeBusy||!recipeApprovalNote.trim()} onClick={approveCurrentRecipe}>Aprovar ficha desta competência</button>
+            <button type="button" className="primary-button" disabled={busy||selectedRecipeApproved||hasTestIngredient||!recipeApprovalNote.trim()} onClick={approveCurrentRecipe}>Aprovar ficha desta competência</button>
           </div>}
           {recipeApprovalMessage && <div className="feedback feedback-info" role="status">{recipeApprovalMessage}</div>}
           {recipeError && <div className="feedback feedback-error" role="alert">{recipeError}</div>}
