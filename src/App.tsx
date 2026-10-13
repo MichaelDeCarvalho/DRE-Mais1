@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { brl, periodLabel } from './format';
 import { consultPeriodModules, nextCompetence } from './competence';
+import { parseQuantityMilliBase } from './quantity';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
@@ -292,9 +293,9 @@ export function App() {
     if (recipeBusy) return;
     setRecipeBusy(true);setRecipeError('');
     try {
-      if (!/^\d+$/.test(recipeQty) || !Number.isSafeInteger(Number(recipeQty)) || Number(recipeQty) < 1) throw new Error('Informe uma quantidade inteira positiva na unidade basica do insumo.');
+      const milliQuantity=parseQuantityMilliBase(recipeQty);
       const result = await invoke<typeof recipeCost>('set_recipe_line', {
-        period, productCode: recipeProduct.trim(), ingredientCode: recipeIngredient.trim(), quantityBase: Number(recipeQty),
+        period, productCode: recipeProduct.trim(), ingredientCode: recipeIngredient.trim(), quantityMilliBase: milliQuantity,
       });
       setRecipeCost(result);setRecipeIngredient('');setRecipeQty('');
       setRecipeDetail(await invoke<typeof recipeDetail>('get_recipe_detail',{period,productCode:recipeProduct.trim()}));
@@ -535,11 +536,11 @@ export function App() {
           <div className="selectors">
             <label>Código do produto vendido<input value={recipeProduct} disabled={recipeBusy} onChange={e=>{setRecipeProduct(e.target.value);setRecipeCost(null);setRecipeDetail(null);}} placeholder="Código externo já mapeado"/></label>
             <label>Código do insumo<input value={recipeIngredient} disabled={recipeBusy} onChange={e=>setRecipeIngredient(e.target.value)} placeholder="Ex.: LEITE"/></label>
-            <label>Consumo (G, ML ou UN)<input value={recipeQty} disabled={recipeBusy} inputMode="numeric" onChange={e=>setRecipeQty(e.target.value)} placeholder="150"/></label>
+            <label>Consumo (G, ML ou UN) — aceita fração<input value={recipeQty} disabled={recipeBusy} inputMode="decimal" onChange={e=>setRecipeQty(e.target.value)} placeholder="Ex.: 11,5 ou 150" /></label>
             <button type="button" className="primary-button" disabled={recipeBusy || !recipeProduct.trim() || !recipeIngredient.trim() || !recipeQty.trim()} onClick={saveRecipeLine}>Adicionar ingrediente à ficha</button>
             <button type="button" className="outline-button" disabled={recipeBusy || !recipeProduct.trim()} onClick={inspectRecipe}>Consultar custo da ficha</button>
           </div>
-          <p>O vínculo de cada insumo é único por produto e competência. Correções de receitas existentes serão implementadas com versionamento e revisão controlada, não por sobrescrita silenciosa.</p>
+          <p>Consumo permite até três casas decimais com vírgula (ex.: 11,5 G ou 0,250 UN). O vínculo de cada insumo é único por produto e competência. Fichas aprovadas permanecem bloqueadas; correções exigirão versionamento e revisão controlada.</p>
           {recipeDetail && <div className="selectors">
             <label>Conferência da ficha (justificativa obrigatória)<input value={recipeApprovalNote} maxLength={500} disabled={recipeBusy} onChange={e=>setRecipeApprovalNote(e.target.value)} placeholder="Conferi todos os insumos e quantidades da receita"/></label>
             <button type="button" className="primary-button" disabled={recipeBusy||!recipeApprovalNote.trim()} onClick={approveCurrentRecipe}>Aprovar ficha desta competência</button>
