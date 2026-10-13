@@ -8,6 +8,7 @@ mod dre_preview;
 mod expenses;
 mod financial_rules;
 mod financial_parameters;
+mod dre_workbook;
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Mutex};
@@ -223,6 +224,24 @@ async fn register_financial_parameter(app:tauri::AppHandle,code:String,name:Stri
   financial_parameters::register(&mut db,&code,&name,&category,&base,&period,basis_points,&source,&note)
  }).await.map_err(|e|e.to_string())?
 }
+
+#[tauri::command]
+async fn import_validated_dre_workbook(app:tauri::AppHandle,period:String,path:String)->Result<dre_workbook::SourceView,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let parsed=dre_workbook::parse(&PathBuf::from(path))?;
+  let state=app.state::<AppState>();
+  let mut db=state.db.lock().map_err(|_|"Banco local indisponivel".to_string())?;
+  dre_workbook::save(&mut db,&period,parsed)
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+async fn get_validated_dre_workbook(app:tauri::AppHandle,period:String)->Result<Option<dre_workbook::SourceView>,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let db=state.db.lock().map_err(|_|"Banco local indisponivel".to_string())?;
+  dre_workbook::load(&db,&period)
+ }).await.map_err(|e|e.to_string())?
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -235,7 +254,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price, approve_recipe, monthly_cmv_summary, get_dre_preview, register_expense, list_expenses, list_financial_parameters, register_financial_parameter])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price, approve_recipe, monthly_cmv_summary, get_dre_preview, register_expense, list_expenses, list_financial_parameters, register_financial_parameter, import_validated_dre_workbook, get_validated_dre_workbook])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
