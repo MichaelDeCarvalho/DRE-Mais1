@@ -231,6 +231,51 @@ mod tests{
   assert!(!overview.complete);
   assert_eq!(overview.approved_cost_cents,0.0);
  }
+ #[test]fn fractional_consumption_is_exact_and_approved_cost_persists(){
+  let t=tempfile::tempdir().unwrap();let file=t.path().join("fractional.sqlite");
+  let mut db=database::open_database(&file).unwrap();
+  db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Produto sintetico')",[]).unwrap();
+  db.execute("INSERT INTO product_external_codes(store_id,product_id,external_code) VALUES(1,1,'TESTE_FRAC')",[]).unwrap();
+  ingredients::register(&mut db,"2026-09","CAFE_TESTE","Cafe","G",1000,10000).unwrap();
+  ingredients::register(&mut db,"2026-09","EMBALAGEM_TESTE","Embalagem","UN",10,4000).unwrap();
+  let first=set_line_milli(&mut db,"2026-09","TESTE_FRAC","CAFE_TESTE",11500).unwrap();
+  assert!((first.total_cost_cents-115.0).abs()<1e-9);
+  let second=set_line_milli(&mut db,"2026-09","TESTE_FRAC","EMBALAGEM_TESTE",250).unwrap();
+  assert!((second.total_cost_cents-215.0).abs()<1e-9);
+  let detail=recipe_detail(&db,"2026-09","TESTE_FRAC").unwrap();
+  assert_eq!(detail.lines.len(),2);
+  assert_eq!(detail.lines.iter().find(|l|l.ingredient_code=="CAFE_TESTE").unwrap().quantity_used,11.5);
+  assert_eq!(detail.lines.iter().find(|l|l.ingredient_code=="EMBALAGEM_TESTE").unwrap().quantity_used,0.25);
+  assert!(set_line_milli(&mut db,"2026-09","TESTE_FRAC","CAFE_TESTE",12345).is_err());
+  assert!(set_line_milli(&mut db,"2026-09","TESTE_FRAC","CAFE_TESTE",0).is_err());
+  approve_recipe(&mut db,"2026-09","TESTE_FRAC","Ficha sintetica conferida").unwrap();
+  assert!(db.execute("UPDATE recipe_lines SET quantity_milli_base=12000 WHERE ingredient_id=(SELECT id FROM ingredients WHERE code='CAFE_TESTE')",[]).is_err());
+  drop(db);
+  let reopened=database::open_database(&file).unwrap();
+  assert!(is_approved(&reopened,"2026-09","TESTE_FRAC").unwrap());
+  assert!((recipe_cost(&reopened,"2026-09","TESTE_FRAC").unwrap().total_cost_cents-215.0).abs()<1e-9);
+ }
+ #[test]fn legacy_approved_recipe_survives_migration_v11_to_v12(){
+  let t=tempfile::tempdir().unwrap();let file=t.path().join("legacy.sqlite");
+  let mut db=database::open_database(&file).unwrap();
+  db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Produto legado')",[]).unwrap();
+  db.execute("INSERT INTO product_external_codes(store_id,product_id,external_code) VALUES(1,1,'LEGADO')",[]).unwrap();
+  ingredients::register(&mut db,"2026-09","LEITE_TESTE","Leite","ML",1000,520).unwrap();
+  db.execute("INSERT INTO recipe_versions(product_id,period) VALUES(1,'2026-09')",[]).unwrap();
+  db.execute("INSERT INTO recipe_lines(recipe_id,ingredient_id,quantity_base) SELECT rv.id,i.id,150 FROM recipe_versions rv JOIN ingredients i ON i.code='LEITE_TESTE'",[]).unwrap();
+  approve_recipe(&mut db,"2026-09","LEGADO","Conferida em versao anterior").unwrap();
+  assert!((recipe_cost(&db,"2026-09","LEGADO").unwrap().total_cost_cents-78.0).abs()<1e-9);
+  db.execute_batch("ALTER TABLE recipe_lines DROP COLUMN quantity_milli_base; PRAGMA user_version=11;").unwrap();
+  drop(db);
+  let mut migrated=database::open_database(&file).unwrap();
+  let version:i64=migrated.pragma_query_value(None,"user_version",|r|r.get(0)).unwrap();
+  assert_eq!(version,12);
+  assert!(is_approved(&migrated,"2026-09","LEGADO").unwrap());
+  assert_eq!(recipe_detail(&migrated,"2026-09","LEGADO").unwrap().lines[0].quantity_used,150.0);
+  assert!((recipe_cost(&migrated,"2026-09","LEGADO").unwrap().total_cost_cents-78.0).abs()<1e-9);
+  assert!(migrated.execute("UPDATE recipe_lines SET quantity_milli_base=1",[]).is_err());
+  assert!(set_line_milli(&mut migrated,"2026-09","LEGADO","LEITE_TESTE",151000).is_err());
+ }
  #[test] fn recipe_is_historical_and_blocks_duplicate(){
   let t=tempfile::tempdir().unwrap();let mut db=database::open_database(&t.path().join("recipe.sqlite")).unwrap();
   db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Cafe com leite')",[]).unwrap();
