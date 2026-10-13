@@ -1,7 +1,7 @@
 //! Previa gerencial somente leitura. Nao fecha DRE e nao supoe despesas.
 use rusqlite::Connection;
 use serde::Serialize;
-use crate::{database,recipes};
+use crate::{database,recipes,expenses};
 
 #[derive(Debug,Serialize)]
 #[serde(rename_all="camelCase")]
@@ -17,9 +17,16 @@ pub struct DrePreview {
  pub approved_product_codes:usize,
  pub status:String,
  pub unregistered_components:Vec<String>,
+ pub recorded_variable_cents:i64,
+ pub recorded_fixed_cents:i64,
+ pub recorded_tax_cents:i64,
+ pub recorded_expense_count:usize,
 }
 pub fn preview(db:&Connection,period:&str)->Result<DrePreview,String>{
  let sales=database::load_period_summary(db,period)?;
+ let registered=expenses::list(db,period)?;
+ let mut variable=0_i64;let mut fixed=0_i64;let mut tax=0_i64;
+ for x in &registered {let bucket=match x.expense_kind.as_str(){"VARIAVEL"=>&mut variable,"FIXA"=>&mut fixed,"TRIBUTO"=>&mut tax,_=>return Err("Tipo de despesa desconhecido".into())};*bucket=bucket.checked_add(x.amount_cents).ok_or("Total de despesas excedeu limite")?;}
  let coverage=recipes::monthly_cmv_summary(db,period)?;
  let complete=sales.reconciled&&coverage.complete&&coverage.product_codes==sales.sold_product_codes;
  let approved_cmv=if complete{Some(coverage.approved_cost_cents)}else{None};
@@ -31,6 +38,7 @@ pub fn preview(db:&Connection,period:&str)->Result<DrePreview,String>{
   pending_product_codes:coverage.pending_codes,
   approved_product_codes:coverage.approved_codes,
   status:if !sales.reconciled{"RECONCILIACAO_PENDENTE"}else if !complete{"CMV_INCOMPLETO"}else{"CMV_APROVADO_DRE_INCOMPLETA"}.into(),
+  recorded_variable_cents:variable,recorded_fixed_cents:fixed,recorded_tax_cents:tax,recorded_expense_count:registered.len(),
   unregistered_components:vec!["Despesas variaveis e taxas".into(),"Tributos".into(),"Despesas fixas".into(),"Estoque fisico e CMV contabil".into()],
  })
 }
@@ -51,5 +59,6 @@ mod tests{
   assert!(view.approved_cmv_cents.is_none());
   assert!(view.contribution_before_other_expenses_cents.is_none());
   assert_eq!(view.status,"CMV_INCOMPLETO");
+  assert_eq!(view.recorded_expense_count,0);
  }
 }
