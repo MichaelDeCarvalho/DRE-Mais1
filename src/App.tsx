@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { brl, periodLabel } from './format';
+import { consultPeriodModules, nextCompetence } from './competence';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
@@ -42,33 +43,68 @@ export function App() {
 
   type FinancialParameter = {code:string;name:string;category:string;calculationBase:string;effectiveFrom:string|null;basisPoints:number|null;source:string|null};
   const [parameters,setParameters] = useState<FinancialParameter[]>([]);
+  const [paramMode,setParamMode] = useState<'new'|'version'|null>(null);
   const [paramCode,setParamCode] = useState('');
   const [paramName,setParamName] = useState('');
   const [paramCategory,setParamCategory] = useState('PAYMENT_FEE');
   const [paramBase,setParamBase] = useState('PAYMENT_METHOD');
+  const [paramEffectiveFrom,setParamEffectiveFrom] = useState('');
   const [paramRate,setParamRate] = useState('');
   const [paramSource,setParamSource] = useState('Confirmado pelo operador');
   const [paramNote,setParamNote] = useState('');
   const [paramMessage,setParamMessage] = useState('');
   const [paramBusy,setParamBusy] = useState(false);
+  const paramRateInput = useRef<HTMLInputElement>(null);
+
+  function cancelParameterEdit(){
+    setParamMode(null);setParamCode('');setParamName('');setParamCategory('PAYMENT_FEE');setParamBase('PAYMENT_METHOD');
+    setParamEffectiveFrom('');setParamRate('');setParamSource('Confirmado pelo operador');setParamNote('');
+    setParamMessage('');
+  }
+  function focusParameterForm(){
+    requestAnimationFrame(() => { document.getElementById('parameter-edit-form')?.scrollIntoView({behavior:'smooth',block:'center'});paramRateInput.current?.focus(); });
+  }
   function editNextVersion(p:FinancialParameter){
-    setParamCode(p.code);setParamName(p.name);setParamCategory(p.category);setParamBase(p.calculationBase);
+    setParamMode('version');setParamCode(p.code);setParamName(p.name);setParamCategory(p.category);setParamBase(p.calculationBase);
+    setParamEffectiveFrom(p.effectiveFrom && period<=p.effectiveFrom ? nextCompetence(p.effectiveFrom) : period);
     setParamRate(p.basisPoints===null?'':(p.basisPoints/100).toFixed(2).replace('.',','));
     setParamSource('Confirmação do operador');setParamNote('');
-    setParamMessage('Dados preenchidos. Selecione a competência de início no topo da página e informe o novo percentual. Não altere competências já cadastradas.');
+    setParamMessage('');
+    focusParameterForm();
   }
-  async function loadParameters(period:string){
-    try { setParameters(await invoke<FinancialParameter[]>('list_financial_parameters',{period}));setParamMessage(''); }
+  function beginNewParameter(){
+    cancelParameterEdit();setParamMode('new');setParamEffectiveFrom(period);
+    focusParameterForm();
+  }
+  async function loadParameters(reference:string){
+    if(paramBusy)return;
+    setParamBusy(true);setParameters([]);setParamMessage('');
+    try{setParameters(await invoke<FinancialParameter[]>('list_financial_parameters',{period:reference}));}
     catch(e){setParamMessage(explainError(e));}
+    finally{setParamBusy(false);}
   }
-  async function saveParameter(period:string){
+  async function saveParameter(){
+    if(!paramMode||paramBusy)return;
     const raw=paramRate.trim().replace(',','.');
-    if(!/^\d{1,3}(\.\d{1,2})?$/.test(raw)||Number(raw)>100){setParamMessage('Informe percentual válido de 0 a 100 com até 2 casas decimais.');return;}
+    if(!/^\\d{1,3}(\\.\\d{1,2})?$/.test(raw)||Number(raw)>100){
+      setParamMessage('Informe percentual válido entre 0 e 100 com até 2 casas decimais.');return;
+    }
+    if(!/^20\\d\\d-(0[1-9]|1[0-2])$/.test(paramEffectiveFrom)){
+      setParamMessage('Informe a competência de início da nova vigência.');return;
+    }
     setParamBusy(true);setParamMessage('');
-    try{
-      await invoke('register_financial_parameter',{code:paramCode.trim().toUpperCase(),name:paramName,category:paramCategory,base:paramBase,period,basisPoints:Math.round(Number(raw)*100),source:paramSource,note:paramNote});
-      await loadParameters(period);setParamMessage('Nova vigência cadastrada. Versões anteriores preservadas.');
-    }catch(e){setParamMessage(explainError(e));}
+    try {
+      await invoke('register_financial_parameter',{
+        code:paramCode.trim().toUpperCase(),name:paramName,category:paramCategory,base:paramBase,
+        period:paramEffectiveFrom,basisPoints:Math.round(Number(raw)*100),source:paramSource,note:paramNote
+      });
+      const savedPeriod=paramEffectiveFrom;
+      const refreshed=await invoke<FinancialParameter[]>('list_financial_parameters',{period});
+      setParameters(refreshed);
+      cancelParameterEdit();
+      setParamMessage(`Vigência cadastrada a partir de ${periodLabel(savedPeriod)}. Para conferir seu efeito, selecione essa competência e clique em Consultar competência. Versões anteriores preservadas.`);
+      setDrePreview(null);
+    } catch(e){setParamMessage(explainError(e));}
     finally{setParamBusy(false);}
   }
   const [year, setYear] = useState('2026');
