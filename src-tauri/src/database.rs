@@ -291,7 +291,7 @@ mod tests {
             let db=open_database(&path).unwrap();
             db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Produto anterior')",[]).unwrap();
             db.execute("INSERT INTO product_external_codes(store_id,product_id,external_code) VALUES(1,1,'TESTE_ANTIGO')",[]).unwrap();
-            db.execute_batch("DROP TRIGGER IF EXISTS forbid_financial_rule_version_update; DROP TRIGGER IF EXISTS forbid_financial_rule_version_delete; DROP TABLE financial_rule_versions; DROP TABLE financial_rules; ALTER TABLE recipe_lines DROP COLUMN quantity_milli_base; PRAGMA user_version=9;").unwrap();
+            db.execute_batch("DROP TRIGGER IF EXISTS forbid_financial_rule_version_update; DROP TRIGGER IF EXISTS forbid_financial_rule_version_delete; DROP TABLE financial_rule_versions; DROP TABLE financial_rules; DROP TRIGGER IF EXISTS dre_source_no_update; DROP TRIGGER IF EXISTS dre_source_no_delete; DROP TRIGGER IF EXISTS dre_row_no_update; DROP TRIGGER IF EXISTS dre_row_no_delete; DROP TABLE dre_workbook_rows; DROP TABLE dre_workbook_sources; ALTER TABLE recipe_lines DROP COLUMN quantity_milli_base; PRAGMA user_version=9;").unwrap();
         }
         let db=open_database(&path).unwrap();
         let version:i64=db.pragma_query_value(None,"user_version",|row|row.get(0)).unwrap();
