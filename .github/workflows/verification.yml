@@ -89,6 +89,24 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run tauri -- build --no-bundle --ci --config src-tauri/tauri.homologacao.conf.json
 
+      - name: Preservar executavel de homologacao antes do segundo build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/target/artifacts/homologacao | Out-Null
+          Copy-Item -LiteralPath src-tauri/target/release/dre-mais1.exe -Destination src-tauri/target/artifacts/homologacao/dre-mais1.exe
+
+      - name: Compilar referencia validada Windows com banco independente
+        if: runner.os == 'Windows'
+        run: npm run tauri -- build --no-bundle --ci --config src-tauri/tauri.dre-referencia.conf.json
+
+      - name: Preservar executavel de referencia em artefato separado
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/target/artifacts/referencia | Out-Null
+          Copy-Item -LiteralPath src-tauri/target/release/dre-mais1.exe -Destination src-tauri/target/artifacts/referencia/dre-mais1.exe
+
       # Runner automatizado nao equivale a desktop interativo: diagnostico nao bloqueante.
       - name: Diagnostico inicializacao Windows (nao homologacao GUI)
         if: runner.os == 'Windows'
@@ -112,6 +130,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dre-mais1-windows-homologacao-isolada
-          path: src-tauri/target/release/dre-mais1.exe
+          path: src-tauri/target/artifacts/homologacao/dre-mais1.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Guardar executavel Windows de referencia validada
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dre-mais1-windows-referencia-validada
+          path: src-tauri/target/artifacts/referencia/dre-mais1.exe
           if-no-files-found: error
           retention-days: 7
