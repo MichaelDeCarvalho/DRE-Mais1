@@ -269,7 +269,7 @@ mod tests{
   drop(db);
   let mut migrated=database::open_database(&file).unwrap();
   let version:i64=migrated.pragma_query_value(None,"user_version",|r|r.get(0)).unwrap();
-  assert_eq!(version,12);
+  assert_eq!(version,13);
   assert!(is_approved(&migrated,"2026-09","LEGADO").unwrap());
   assert_eq!(recipe_detail(&migrated,"2026-09","LEGADO").unwrap().lines[0].quantity_used,150.0);
   assert!((recipe_cost(&migrated,"2026-09","LEGADO").unwrap().total_cost_cents-78.0).abs()<1e-9);
