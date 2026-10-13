@@ -42,6 +42,9 @@ mod tests {
  #[test]fn versions_are_immutable_and_period_resolved(){
  let t=tempfile::tempdir().unwrap();let mut db=database::open_database(&t.path().join("parameters.sqlite")).unwrap();
  assert_eq!(list(&db,"2026-09").unwrap().len(),7);
+ let earlier=vec![crate::importer::MethodTotal{code:"credit".into(),label:"Crédito".into(),total_cents:10_000}];
+ assert_eq!(crate::financial_rules::calculate_configured_fees(&db,"2026-08",&earlier).unwrap()[0].estimated_fee_cents,None);
+ assert!(crate::financial_rules::configured_royalties(&db,"2026-08",10000).is_err());
  register(&mut db,"CREDITO","Crédito","PAYMENT_FEE","PAYMENT_METHOD","2026-11",250,"operador","2,5%").unwrap();
  assert_eq!(list(&db,"2026-10").unwrap().into_iter().find(|x|x.code=="CREDITO").unwrap().basis_points,Some(200));
  assert_eq!(list(&db,"2026-11").unwrap().into_iter().find(|x|x.code=="CREDITO").unwrap().basis_points,Some(250));
