@@ -270,6 +270,27 @@ mod tests {
         assert!(load_period_summary(&db, "2026-09").unwrap_err().contains("Integridade"));
     }
     #[test]
+    fn upgrade_v9_preserves_existing_mapping_and_adds_financial_parameters(){
+        let t=tempfile::tempdir().unwrap();
+        let path=t.path().join("migration.sqlite");
+        {
+            let db=open_database(&path).unwrap();
+            db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Produto anterior')",[]).unwrap();
+            db.execute("INSERT INTO product_external_codes(store_id,product_id,external_code) VALUES(1,1,'TESTE_ANTIGO')",[]).unwrap();
+            db.execute_batch("DROP TRIGGER IF EXISTS forbid_financial_rule_version_update; DROP TRIGGER IF EXISTS forbid_financial_rule_version_delete; DROP TABLE financial_rule_versions; DROP TABLE financial_rules; PRAGMA user_version=9;").unwrap();
+        }
+        let db=open_database(&path).unwrap();
+        let version:i64=db.pragma_query_value(None,"user_version",|row|row.get(0)).unwrap();
+        assert_eq!(version,11);
+        let mapping:i64=db.query_row("SELECT COUNT(*) FROM product_external_codes WHERE external_code='TESTE_ANTIGO'",[],|r|r.get(0)).unwrap();
+        assert_eq!(mapping,1);
+        let rules:i64=db.query_row("SELECT COUNT(*) FROM financial_rule_versions WHERE effective_from='2026-09'",[],|r|r.get(0)).unwrap();
+        assert_eq!(rules,7);
+        let reopened=open_database(&path).unwrap();
+        let rules_after:i64=reopened.query_row("SELECT COUNT(*) FROM financial_rule_versions",[],|r|r.get(0)).unwrap();
+        assert_eq!(rules_after,7);
+    }
+    #[test]
     fn period_mismatch_is_atomic() {
         let temp = tempfile::tempdir().unwrap();
         let mut db = open_database(&temp.path().join("test.sqlite")).unwrap();
