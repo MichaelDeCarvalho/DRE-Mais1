@@ -6,7 +6,7 @@ pub fn open_database(path: &std::path::Path) -> Result<Connection, String> {
     let mut db = Connection::open(path).map_err(|e| format!("Não foi possível abrir SQLite: {e}"))?;
     db.pragma_update(None, "foreign_keys", "ON").map_err(|e| e.to_string())?;
     let version: i64 = db.pragma_query_value(None, "user_version", |row| row.get(0)).map_err(|e| e.to_string())?;
-    if version > 12 { return Err(format!("Banco de dados versão {version} é mais recente que esta aplicação.")); }
+    if version > 13 { return Err(format!("Banco de dados versão {version} é mais recente que esta aplicação.")); }
     if version == 0 {
         let tx = db.transaction().map_err(|e| e.to_string())?;
         tx.execute_batch(include_str!("../migrations/0001_init.sql")).map_err(|e| format!("Migration 0001 falhou: {e}"))?;
@@ -87,8 +87,15 @@ pub fn open_database(path: &std::path::Path) -> Result<Connection, String> {
         tx.pragma_update(None,"user_version",12).map_err(|e|e.to_string())?;
         tx.commit().map_err(|e|e.to_string())?;
     }
+    if version < 13 {
+        let tx=db.transaction().map_err(|e|e.to_string())?;
+        tx.execute_batch(include_str!("../migrations/0013_dre_workbook_reference.sql"))
+          .map_err(|e|format!("Migration 0013 falhou: {e}"))?;
+        tx.pragma_update(None,"user_version",13).map_err(|e|e.to_string())?;
+        tx.commit().map_err(|e|e.to_string())?;
+    }
     Ok(db)
-}
+
 
 pub fn save_reports(db: &mut Connection, selected_period: &str, products: ProductReport, payments: PaymentReport) -> Result<ImportSummary, String> {
     importer::validate_selected_period(selected_period, &payments.period)?;
@@ -288,7 +295,7 @@ mod tests {
         }
         let db=open_database(&path).unwrap();
         let version:i64=db.pragma_query_value(None,"user_version",|row|row.get(0)).unwrap();
-        assert_eq!(version,12);
+        assert_eq!(version,13);
         let mapping:i64=db.query_row("SELECT COUNT(*) FROM product_external_codes WHERE external_code='TESTE_ANTIGO'",[],|r|r.get(0)).unwrap();
         assert_eq!(mapping,1);
         let rules:i64=db.query_row("SELECT COUNT(*) FROM financial_rule_versions WHERE effective_from='2026-09'",[],|r|r.get(0)).unwrap();
