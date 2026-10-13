@@ -41,6 +41,9 @@ fn money_cents(value:f64)->Result<i64,String>{
  Ok(cents as i64)
 }
 fn percentage_row(row:usize)->bool{[4,51,53,76,106].contains(&row)}
+fn column_cell<'a>(row:&'a [Data],start_col:usize,col:usize)->&'a Data{
+ col.checked_sub(start_col).and_then(|i|row.get(i)).unwrap_or(&Data::Empty)
+}
 fn source_row(row:usize,label:&Data,aux:&Data,value:&Data)->Result<Option<SourceRow>,String>{
  let label=cell_text(label);
  if label.is_empty(){return Ok(None);}
@@ -62,18 +65,18 @@ pub fn parse(path:&Path)->Result<ParsedSource,String>{
  if !wb.sheet_names().iter().any(|s|s==SHEET){return Err("Arquivo sem a aba DRE MENSAL".into());}
  let range=wb.worksheet_range(SHEET).map_err(|e|format!("Falha na aba DRE MENSAL: {e}"))?;
  let (row_offset,col_offset)=range.start().ok_or("Aba DRE MENSAL vazia")?;
- let col=|row:&[Data],index:usize|->&Data{index.checked_sub(col_offset as usize).and_then(|i|row.get(i)).unwrap_or(&Data::Empty)};
+
  let mut rows=Vec::new();let mut revenue=None;let mut source_month_label=String::new();
  for (index,cells) in range.rows().enumerate(){
   let line=row_offset as usize+index+1;
   if line>106{break;}
-  if line==5{source_month_label=cell_text(col(cells,3));}
+  if line==5{source_month_label=cell_text(column_cell(cells,col_offset as usize,3));}
   if line==7{
-   let label=cell_text(col(cells,1));
+   let label=cell_text(column_cell(cells,col_offset as usize,1));
    if !label.eq_ignore_ascii_case("Receita Total"){return Err("DRE MENSAL!B7 deve identificar Receita Total".into());}
-   revenue=Some(money_cents(number(col(cells,3)).ok_or("Receita DRE MENSAL!D7 nao numerica")?)?);
+   revenue=Some(money_cents(number(column_cell(cells,col_offset as usize,3)).ok_or("Receita DRE MENSAL!D7 nao numerica")?)?);
   }
-  if let Some(row)=source_row(line,col(cells,1),col(cells,2),col(cells,3))?{
+  if let Some(row)=source_row(line,column_cell(cells,col_offset as usize,1),column_cell(cells,col_offset as usize,2),column_cell(cells,col_offset as usize,3))?{
    rows.push(row);
   }
  }
