@@ -454,7 +454,9 @@ export function App() {
         <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas organizados por competência. Fechamento sujeito à validação.</p></div><div className="header-tag">Processamento offline</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
-          <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { setYear(e.target.value); setResult(null); setEditingCode(null); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { setMonth(e.target.value); setResult(null); setEditingCode(null); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="outline-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>Consultar importação salva</button></div>
+          <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { clearPeriodViews(true); setYear(e.target.value); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { clearPeriodViews(true); setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="primary-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>{pending?'Consultando todos os módulos…':'Consultar competência'}</button></div>
+          {periodNotice && <p role="status" className="period-notice">{periodNotice}</p>}
+          {viewedPeriod && <p className="footnote">Dados exibidos referentes à competência consultada: <strong>{periodLabel(viewedPeriod)}</strong>. A prévia da DRE permanece sujeita às validações de fechamento.</p>}
         </section>
         <section className="section-block catalog-section" aria-labelledby="catalog-heading">
           <div className="section-heading"><span className="step">A</span><div><h2 id="catalog-heading">Cadastro legado de referência (opcional)</h2><p>Carregue uma única vez a planilha consolidada com a aba Base DRE, para identificar códigos já conhecidos. Não importa fichas técnicas nem valores de CMV.</p></div></div>
@@ -499,7 +501,7 @@ export function App() {
             </div>}
             {result.unmappedProducts.length > 0 ? <><div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th>Categoria</th><th className="num">Quantidade</th><th className="num">Vendas</th><th>Status</th><th>Ação</th></tr></thead><tbody>{visibleProducts.map(p => <tr key={p.externalCode}><td className="mono">{p.externalCode}</td><td>{p.name}</td><td>{p.category}</td><td className="num">{p.quantity}</td><td className="num">{brl(p.salesCents)}</td><td><span className="pending-tag">Não mapeado</span></td><td><button type="button" className="outline-button" disabled={busy} onClick={() => beginMapping(p.externalCode, p.name, p.category)}>Cadastrar</button></td></tr>)}</tbody></table></div><p className="footnote">{visibleProducts.length} de {result.unmappedProducts.length} pendências exibidas. O resultado depende dos códigos atualmente cadastrados. A Base DRE pode ser carregada pela seção opcional acima; os códigos com erro permanecem pendentes.</p></> : <div className="empty-state">Nenhum código externo pendente de mapeamento.</div>}
           </section>
-        </> : <section className="empty-state"><strong>Pronto para validar setembro de 2026</strong><p>Escolha os dois arquivos e execute a importação. A conciliação aparecerá aqui.</p></section>}
+        </> : <section className="empty-state"><strong>Aguardando consulta de competência</strong><p>Clique em Consultar competência para atualizar os módulos ou selecione relatórios para uma nova importação.</p></section>}
         <section className="section-block" aria-labelledby="ingredient-heading">
           <div className="section-heading"><span className="step">06</span><div><h2 id="ingredient-heading">Insumos e custos de compra — cadastro inicial</h2><p>Independente dos relatórios de venda. Custos por competência, sem calcular CMV.</p></div></div>
           <p>Unidades básicas: G (gramas), ML (mililitros) e UN (unidades). Quantidade de compra na unidade básica. Custo em centavos inteiros. Exemplo: pacote de 1 kg por R$ 25,90 → G, quantidade 1000, custo 2590.</p>
@@ -604,20 +606,44 @@ export function App() {
           <p className="footnote">Os valores lançados representam apenas despesas registradas. É necessária conferência de completude antes do fechamento da DRE.</p>
         </section>
         <section className="section-block" aria-labelledby="parameters-heading">
-          <div className="section-heading"><span className="step">%</span><div><h2 id="parameters-heading">Configurações · Parâmetros financeiros</h2><p>Taxas editáveis por competência. Alterações futuras não sobrescrevem versões anteriores.</p></div></div>
-          <div className="action-line"><p>Referência: {periodLabel(period)}. Percentuais são parâmetros, não despesas automaticamente contabilizadas.</p><button type="button" className="outline-button" disabled={paramBusy} onClick={()=>loadParameters(period)}>Consultar parâmetros</button></div>
-          {parameters.length>0&&<div className="scroll-table"><table><thead><tr><th>Regra</th><th>Categoria</th><th>Base</th><th>Vigência</th><th>Percentual</th><th>Ação</th></tr></thead><tbody>{parameters.map(p=><tr key={p.code}><td>{p.name} ({p.code})</td><td>{p.category}</td><td>{p.calculationBase}</td><td>{p.effectiveFrom||'Não vigente'}</td><td>{p.basisPoints===null?'Pendente':(p.basisPoints/100).toFixed(2)+'%'}</td><td><button type="button" className="outline-button" onClick={()=>editNextVersion(p)}>Nova vigência</button></td></tr>)}</tbody></table></div>}
-          <div className="selectors">
-            <label>Código único<input value={paramCode} maxLength={64} onChange={e=>setParamCode(e.target.value.toUpperCase())} placeholder="EX.: CREDITO" /></label>
-            <label>Descrição<input value={paramName} maxLength={120} onChange={e=>setParamName(e.target.value)} placeholder="Ex.: Cartão crédito" /></label>
-            <label>Categoria<select value={paramCategory} onChange={e=>setParamCategory(e.target.value)}><option value="PAYMENT_FEE">Taxa de pagamento</option><option value="ROYALTIES">Royalties</option><option value="PLATFORM_FEE">Taxa plataforma</option><option value="TAX_ESTIMATE">Estimativa tributária</option><option value="OTHER">Outra</option></select></label>
-            <label>Base de cálculo<select value={paramBase} onChange={e=>setParamBase(e.target.value)}><option value="PAYMENT_METHOD">Meio de pagamento</option><option value="NET_REVENUE">Receita após descontos</option><option value="PLATFORM_SALES">Vendas da plataforma</option><option value="DOCUMENTED">Valor documental</option><option value="MANUAL">Manual</option></select></label>
-            <label>Percentual (%)<input inputMode="decimal" value={paramRate} onChange={e=>setParamRate(e.target.value)} placeholder="Ex.: 2,50" /></label>
-            <label>Fonte<input value={paramSource} maxLength={200} onChange={e=>setParamSource(e.target.value)} /></label>
-            <label>Justificativa<input value={paramNote} maxLength={500} onChange={e=>setParamNote(e.target.value)} /></label>
+          <div className="section-heading"><span className="step">%</span><div><h2 id="parameters-heading">Configurações · Parâmetros financeiros</h2><p>Taxas editáveis por competência, com histórico. Alterações não sobrescrevem meses anteriores.</p></div></div>
+          <div className="action-line">
+            <p>Referência consultada: {viewedPeriod===period?periodLabel(period):'Ainda não consultada'}. Percentuais não são despesas lançadas automaticamente.</p>
+            <div className="parameter-actions">
+              <button type="button" className="outline-button" disabled={busy} onClick={()=>loadParameters(period)}>{paramBusy?'Consultando…':'Atualizar parâmetros'}</button>
+              <button type="button" className="primary-button" disabled={busy} onClick={beginNewParameter}>Cadastrar nova regra</button>
+            </div>
           </div>
-          <div className="action-line"><p>A nova vigência começa em {periodLabel(period)}. Registros da mesma competência não podem ser substituídos.</p><button type="button" className="primary-button" disabled={paramBusy||!paramCode||!paramName||!paramRate||!paramSource} onClick={()=>saveParameter(period)}>Salvar nova vigência</button></div>
-          {paramMessage&&<div className="feedback feedback-info" role="status">{paramMessage}</div>}
+          {parameters.length>0 && <div className="scroll-table"><table><thead><tr><th>Regra</th><th>Categoria</th><th>Base</th><th>Vigência</th><th>Percentual</th><th>Ação</th></tr></thead><tbody>
+            {parameters.map(p=><tr key={p.code}><td>{p.name} ({p.code})</td><td>{p.category}</td><td>{p.calculationBase}</td><td>{p.effectiveFrom||'Não vigente'}</td><td>{p.basisPoints===null?'Pendente':(p.basisPoints/100).toFixed(2)+'%'}</td>
+              <td><button type="button" className="outline-button" disabled={busy} onClick={()=>editNextVersion(p)}>Nova vigência</button></td></tr>)}
+          </tbody></table></div>}
+          {paramMode && <div id="parameter-edit-form" className="parameter-edit-form" role="region" aria-label={paramMode==='version'?'Editar próxima vigência':'Cadastrar nova regra'}>
+            <div className="parameter-edit-header">
+              <div><strong>{paramMode==='version'?`Nova vigência de ${paramName}`:'Cadastro de nova regra financeira'}</strong>
+                <p>{paramMode==='version'?'Identificação e categoria permanecem protegidas. Confira os campos destacados, ajuste a competência e o percentual e salve quando estiver pronto.':'Preencha os dados da regra, a competência inicial e o percentual. Nenhum valor é gravado antes de salvar.'}</p></div>
+              <span className="edit-mode-tag">Em edição · ainda não salvo</span>
+            </div>
+            <div className="selectors parameter-fields">
+              <label>Código único<input value={paramCode} maxLength={64} readOnly={paramMode==='version'} disabled={paramBusy} onChange={e=>setParamCode(e.target.value.toUpperCase())} placeholder="EX.: CREDITO" /></label>
+              <label>Descrição<input value={paramName} maxLength={120} readOnly={paramMode==='version'} disabled={paramBusy} onChange={e=>setParamName(e.target.value)} placeholder="Ex.: Cartão de crédito" /></label>
+              <label>Categoria<select value={paramCategory} disabled={paramBusy||paramMode==='version'} onChange={e=>setParamCategory(e.target.value)}><option value="PAYMENT_FEE">Taxa de pagamento</option><option value="ROYALTIES">Royalties</option><option value="PLATFORM_FEE">Taxa plataforma</option><option value="TAX_ESTIMATE">Estimativa tributária</option><option value="OTHER">Outra</option></select></label>
+              <label>Base de cálculo<select value={paramBase} disabled={paramBusy||paramMode==='version'} onChange={e=>setParamBase(e.target.value)}><option value="PAYMENT_METHOD">Meio de pagamento</option><option value="NET_REVENUE">Receita após descontos</option><option value="PLATFORM_SALES">Vendas da plataforma</option><option value="DOCUMENTED">Valor documental</option><option value="MANUAL">Manual</option></select></label>
+              <label className="parameter-required">Início da vigência (mês/ano) *<input type="month" required value={paramEffectiveFrom} disabled={paramBusy} onChange={e=>setParamEffectiveFrom(e.target.value)} aria-label="Competência de início da vigência" /></label>
+              <label className="parameter-required">Percentual (%) *<input ref={paramRateInput} required inputMode="decimal" value={paramRate} disabled={paramBusy} onChange={e=>setParamRate(e.target.value)} placeholder="Ex.: 2,50" aria-label="Novo percentual da regra" /></label>
+              <label className="parameter-required">Fonte da informação *<input required value={paramSource} maxLength={200} disabled={paramBusy} onChange={e=>setParamSource(e.target.value)} placeholder="Ex.: contrato, operador" /></label>
+              <label>Justificativa (opcional)<input value={paramNote} maxLength={500} disabled={paramBusy} onChange={e=>setParamNote(e.target.value)} placeholder="Ex.: mudança contratual" /></label>
+            </div>
+            <p className="footnote">* Campos obrigatórios. Uma nova vigência não substitui uma regra cadastrada para o mesmo mês.</p>
+            <div className="action-line">
+              <p>Vigência a registrar: <strong>{paramEffectiveFrom || 'Selecione mês/ano'}</strong>. Ao cancelar, nada será gravado.</p>
+              <div className="parameter-actions">
+                <button type="button" className="outline-button" disabled={paramBusy} onClick={cancelParameterEdit}>Cancelar</button>
+                <button type="button" className="primary-button" disabled={paramBusy||busy||!paramCode.trim()||!paramName.trim()||!paramRate.trim()||!paramEffectiveFrom||!paramSource.trim()} onClick={saveParameter}>{paramBusy?'Salvando…':paramMode==='version'?'Salvar nova vigência':'Salvar nova regra'}</button>
+              </div>
+            </div>
+          </div>}
+          {paramMessage && <div className="feedback feedback-info" role="status">{paramMessage}</div>}
         </section>
         <section className="section-block" aria-labelledby="appearance-heading">
           <div className="section-heading"><span className="step">⚙</span><div><h2 id="appearance-heading">Configurações · Aparência</h2><p>Escolha o visual do aplicativo. Sua preferência é lembrada neste computador.</p></div></div>
