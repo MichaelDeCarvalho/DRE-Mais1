@@ -147,6 +147,15 @@ mod tests{
   let source=ParsedSource{file:importer::OriginalFile{filename:"exemplo-sintetico.xlsx".into(),raw_bytes:raw,sha256:sha},source_month_label:"Agosto".into(),revenue_cents:revenue,rows};
   save(&mut db,"2026-09",source).unwrap();
   assert_eq!(load(&db,"2026-09").unwrap().unwrap().rows.len(),40);
+  let another_bytes=vec![5,6,7,8];
+  let another_sha=format!("{:x}",Sha256::digest(&another_bytes));
+  let duplicate=ParsedSource{
+   file:importer::OriginalFile{filename:"outro_sintetico.xlsx".into(),raw_bytes:another_bytes,sha256:another_sha},
+   source_month_label:"Setembro".into(),revenue_cents:revenue,
+   rows:(1..=40).map(|n|SourceRow{source_row:n,label:if n==7{"Receita Total".into()}else{format!("Linha {n}")},
+    raw_auxiliary:String::new(),raw_value:n.to_string(),value_cents:if n==7{Some(revenue)}else{Some(n as i64)},value_kind:"MONETARIO".into()}).collect(),
+  };
+  assert!(save(&mut db,"2026-09",duplicate).is_err(),"Nao deve duplicar nem substituir a DRE");
   let count:i64=db.query_row("SELECT COUNT(*) FROM managerial_expenses",[],|r|r.get(0)).unwrap();
   assert_eq!(count,0);
   assert!(db.execute("UPDATE dre_workbook_rows SET value_cents=100 WHERE source_row=7",[]).is_err());
