@@ -83,3 +83,12 @@ Código preparado em pacote local; GitHub não foi alterado e o pipeline não ro
 - `src-tauri/src/recipes.rs`: cadastro de um insumo na ficha (codigo externo de produto ja mapeado; insumo com custo na mesma competencia; quantidade inteira >0 em unidade basica). Custo unitario teorico calculado proporcionalmente sobre custo+frete+ST da compra, sem alterar vendas/importacoes. Linha duplicada bloqueada (sem edicao).
 - `src-tauri/src/lib.rs`: comandos set_recipe_line e get_recipe_cost; `src/App.tsx`: secao inicial 07.
 - Nao assume custos importados da Base DRE antiga; nao calcula DRE/CMV mensal/estoque; sem afirmacao de homologacao GUI. Pendente CI da HEAD, teste de rollback e UX completo das fichas.
+
+## 2026-10-12 — Frontend profissional (primeira iteracao; CI pendente)
+
+- Usuario homologou em Windows isolado: 120 codigos mapeados, R$ 24.944,63 conciliados, insumo sintético LEITE_TESTE R$5,60 persistido, ficha de 150ml R$0,84, aprovacao/status e CMV incompleto, preco teste R$10 e taxa 8,40%, despesas sinteticas FIXA R$2.500, VARIAVEL R$150, TRIBUTO R$800, persistencia OK.
+- Correção `Total registrado` em DRE na versao seguinte: R$ 3.450,00 no teste. CI da correção anterior estava em progresso, substituido por novos commits.
+- Preferencia explicita: tema ESCURO por padrao, configuracoes com escuro/claro/acompanhar Windows.
+- `src/App.tsx` com menu lateral por modulos e Configuracoes/Aparencia; preferência gravada em localStorage (apenas UI, sem dados financeiros). `src/styles.css` com tokens de temas e regras responsivas.
+- Aguarda CI desta HEAD antes de distribuir nova versao. Manter banco principal intocado; homologacao via identificador distinto.
+- Concluir refinamento visual, auditar legibilidade/contraste e revisar fluxo de produtos; entregar para homologacao em copia isolada somente apos CI.
