@@ -84,7 +84,8 @@ pub fn monthly_cost_overview(db:&Connection,period:&str)->Result<Vec<ProductCost
    Ok(detail)=>{
     let total=detail.total_cost_cents*qty as f64;
     if !total.is_finite(){return Err("CMV teorico excedeu limite".into());}
-    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:if is_approved(db,period,&code)?{"FICHA_APROVADA".into()}else{"FICHA_PARCIAL_NAO_HOMOLOGADA".into()},sale_price_cents:price,cmv_percent:price.map(|p|100.0*detail.total_cost_cents/p as f64)});
+    let approved=is_approved(db,period,&code)?;
+    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:if approved{"FICHA_APROVADA".into()}else{"FICHA_PARCIAL_NAO_HOMOLOGADA".into()},sale_price_cents:price,cmv_percent:price.map(|p|100.0*detail.total_cost_cents/p as f64)});
    },
    Err(_)=>out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_FICHA_OU_CUSTO".into(),sale_price_cents:price,cmv_percent:None}),
   }
