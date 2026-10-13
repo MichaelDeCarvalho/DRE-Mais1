@@ -44,7 +44,7 @@ mod tests {
  assert_eq!(list(&db,"2026-09").unwrap().len(),7);
  let earlier=vec![crate::importer::MethodTotal{code:"credit".into(),label:"Crédito".into(),total_cents:10_000}];
  assert_eq!(crate::financial_rules::calculate_configured_fees(&db,"2026-08",&earlier).unwrap()[0].estimated_fee_cents,None);
- assert!(crate::financial_rules::configured_royalties(&db,"2026-08",10000).is_err());
+ assert_eq!(crate::financial_rules::configured_royalties(&db,"2026-08",10000).unwrap(),None);
  register(&mut db,"CREDITO","Crédito","PAYMENT_FEE","PAYMENT_METHOD","2026-11",250,"operador","2,5%").unwrap();
  assert_eq!(list(&db,"2026-10").unwrap().into_iter().find(|x|x.code=="CREDITO").unwrap().basis_points,Some(200));
  assert_eq!(list(&db,"2026-11").unwrap().into_iter().find(|x|x.code=="CREDITO").unwrap().basis_points,Some(250));
@@ -52,8 +52,8 @@ mod tests {
  assert_eq!(crate::financial_rules::calculate_configured_fees(&db,"2026-10",&synthetic).unwrap()[0].estimated_fee_cents,Some(200));
  assert_eq!(crate::financial_rules::calculate_configured_fees(&db,"2026-11",&synthetic).unwrap()[0].estimated_fee_cents,Some(250));
  register(&mut db,"ROYALTIES","Royalties","ROYALTIES","NET_REVENUE","2026-11",750,"contrato","teste").unwrap();
- assert_eq!(crate::financial_rules::configured_royalties(&db,"2026-10",10000).unwrap(),700);
- assert_eq!(crate::financial_rules::configured_royalties(&db,"2026-11",10000).unwrap(),750);
+ assert_eq!(crate::financial_rules::configured_royalties(&db,"2026-10",10000).unwrap(),Some(700));
+ assert_eq!(crate::financial_rules::configured_royalties(&db,"2026-11",10000).unwrap(),Some(750));
  assert!(register(&mut db,"CREDITO","Crédito","PAYMENT_FEE","PAYMENT_METHOD","2026-09",999,"operador","").is_err());
  assert!(db.execute("UPDATE financial_rule_versions SET basis_points=999 WHERE effective_from='2026-09'",[]).is_err());
  assert!(db.execute("DELETE FROM financial_rule_versions",[]).is_err());
