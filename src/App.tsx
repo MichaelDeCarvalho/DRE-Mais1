@@ -420,6 +420,7 @@ export function App() {
             <p>CMV técnico aprovado para a competência: {drePreview.approvedCmvCents===null?'Não disponível — cobertura incompleta':brl(Math.round(drePreview.approvedCmvCents))}.</p>
             <p>Receita menos CMV técnico (antes de outras despesas): {drePreview.contributionBeforeOtherExpensesCents===null?'Não disponível':brl(Math.round(drePreview.contributionBeforeOtherExpensesCents))}.</p>
             <p>Despesas registradas ({drePreview.recordedExpenseCount} lançamentos): variáveis {brl(drePreview.recordedVariableCents)}, fixas {brl(drePreview.recordedFixedCents)}, tributos {brl(drePreview.recordedTaxCents)}. Valores ainda não homologados como completos.</p>
+            <p><strong>Total registrado: {brl(drePreview.recordedVariableCents + drePreview.recordedFixedCents + drePreview.recordedTaxCents)}</strong> — soma dos lançamentos classificados nesta competência, não representa o total definitivo de despesas.</p>
             <p>Componentes ainda sem apuração: {drePreview.unregisteredComponents.join('; ')}. Nenhum resultado líquido ou lucro é calculado nesta prévia.</p>
           </div>}
         </section>
