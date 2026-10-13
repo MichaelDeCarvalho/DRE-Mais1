@@ -83,7 +83,7 @@ export function App() {
   const [expenseRows,setExpenseRows] = useState<Array<{id:number;period:string;expenseKind:string;category:string;description:string;amountCents:number;reference:string}>>([]);
   const [dreBusy,setDreBusy] = useState(false);
   const [dreError,setDreError] = useState('');
-  const [drePreview,setDrePreview] = useState<{period:string;revenueCents:number;paymentsCents:number;differenceCents:number;reconciled:boolean;approvedCmvCents:number|null;contributionBeforeOtherExpensesCents:number|null;pendingProductCodes:number;approvedProductCodes:number;status:string;unregisteredComponents:string[];recordedVariableCents:number;recordedFixedCents:number;recordedTaxCents:number;recordedExpenseCount:number} | null>(null);
+  const [drePreview,setDrePreview] = useState<{period:string;revenueCents:number;paymentsCents:number;differenceCents:number;reconciled:boolean;approvedCmvCents:number|null;contributionBeforeOtherExpensesCents:number|null;pendingProductCodes:number;approvedProductCodes:number;status:string;unregisteredComponents:string[];recordedVariableCents:number;recordedFixedCents:number;recordedTaxCents:number;recordedExpenseCount:number;estimatedRoyaltiesCents:number;estimatedPaymentFees:Array<{code:string;label:string;baseCents:number;rateBasisPoints:number|null;estimatedFeeCents:number|null;status:string}>} | null>(null);
   const [cmvSummary,setCmvSummary] = useState<{period:string;productCodes:number;approvedCodes:number;pendingCodes:number;approvedQuantity:number;approvedCostCents:number;complete:boolean} | null>(null);
 
   const [recipeDetail, setRecipeDetail] = useState<{
@@ -453,6 +453,9 @@ export function App() {
             <p>Fichas aprovadas: {drePreview.approvedProductCodes} · Pendentes: {drePreview.pendingProductCodes}.</p>
             <p>CMV técnico aprovado para a competência: {drePreview.approvedCmvCents===null?'Não disponível — cobertura incompleta':brl(Math.round(drePreview.approvedCmvCents))}.</p>
             <p>Receita menos CMV técnico (antes de outras despesas): {drePreview.contributionBeforeOtherExpensesCents===null?'Não disponível':brl(Math.round(drePreview.contributionBeforeOtherExpensesCents))}.</p>
+            <p>Royalties estimados (7% sobre a receita conciliada): <strong>{brl(drePreview.estimatedRoyaltiesCents)}</strong>. Valor calculado, não confirmado como lançamento.</p>
+            <p>Taxas estimadas por meio de pagamento (sem incluir nas despesas registradas):</p>
+            <div className="scroll-table"><table><thead><tr><th>Meio</th><th>Base</th><th>Taxa</th><th>Estimativa</th></tr></thead><tbody>{drePreview.estimatedPaymentFees.map(fee=><tr key={fee.code}><td>{fee.label}</td><td>{brl(fee.baseCents)}</td><td>{fee.rateBasisPoints===null?'Conferir':(fee.rateBasisPoints/100).toFixed(2)+'%'}</td><td>{fee.estimatedFeeCents===null?'Pendente':brl(fee.estimatedFeeCents)}</td></tr>)}</tbody></table></div>
             <p>Despesas registradas ({drePreview.recordedExpenseCount} lançamentos): variáveis {brl(drePreview.recordedVariableCents)}, fixas {brl(drePreview.recordedFixedCents)}, tributos {brl(drePreview.recordedTaxCents)}. Valores ainda não homologados como completos.</p>
             <p><strong>Total registrado: {brl(drePreview.recordedVariableCents + drePreview.recordedFixedCents + drePreview.recordedTaxCents)}</strong> — soma dos lançamentos classificados nesta competência, não representa o total definitivo de despesas.</p>
             <p>Componentes ainda sem apuração: {drePreview.unregisteredComponents.join('; ')}. Nenhum resultado líquido ou lucro é calculado nesta prévia.</p>
