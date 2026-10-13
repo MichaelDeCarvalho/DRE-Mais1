@@ -86,10 +86,10 @@ export function App() {
   async function saveParameter(){
     if(!paramMode||paramBusy)return;
     const raw=paramRate.trim().replace(',','.');
-    if(!/^\\d{1,3}(\\.\\d{1,2})?$/.test(raw)||Number(raw)>100){
+    if(!/^\d{1,3}(\.\d{1,2})?$/.test(raw)||Number(raw)>100){
       setParamMessage('Informe percentual válido entre 0 e 100 com até 2 casas decimais.');return;
     }
-    if(!/^20\\d\\d-(0[1-9]|1[0-2])$/.test(paramEffectiveFrom)){
+    if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(paramEffectiveFrom)){
       setParamMessage('Informe a competência de início da nova vigência.');return;
     }
     setParamBusy(true);setParamMessage('');
@@ -430,7 +430,7 @@ export function App() {
       : `Competência ${periodLabel(reference)} consultada. ${errors} módulo(s) sem dados ou com pendência; confira os avisos nas seções correspondentes.`);
   }
   async function loadSaved() {
-    if (busy || !/^20\\d\\d$/.test(year)) return;
+    if (busy || !/^20\d\d$/.test(year)) return;
     setPending(true);setError(null);clearPeriodViews();
     try { await refreshPeriod(period); }
     catch(e){setError(explainError(e));}
