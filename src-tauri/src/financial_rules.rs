@@ -49,12 +49,12 @@ pub fn calculate_configured_fees(db:&rusqlite::Connection,period:&str,methods:&[
  }
  Ok(result)
 }
-pub fn configured_royalties(db:&rusqlite::Connection,period:&str,revenue:i64)->Result<i64,String>{
+pub fn configured_royalties(db:&rusqlite::Connection,period:&str,revenue:i64)->Result<Option<i64>,String>{
  match configured_rate(db,period,"ROYALTIES","ROYALTIES","NET_REVENUE")?{
-  Some(rate) if revenue>=0=>i64::try_from(((revenue as i128)*(rate as i128)+5000)/10000).map_err(|_|"Royalties fora do limite".into()),
+  Some(rate) if revenue>=0=>i64::try_from(((revenue as i128)*(rate as i128)+5000)/10000).map(Some).map_err(|_|"Royalties fora do limite".into()),
   Some(_)=>Err("Receita negativa não suportada".into()),
-  None if period < "2026-09" => Err("Royalties anteriores a setembro de 2026 exigem taxa histórica confirmada".into()),
-  None=>royalties_cents(revenue)
+  None if period < "2026-09" => Ok(None),
+  None=>royalties_cents(revenue).map(Some)
  }
 }
 
