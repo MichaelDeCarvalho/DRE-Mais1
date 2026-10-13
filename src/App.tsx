@@ -107,6 +107,8 @@ export function App() {
     } catch(e){setParamMessage(explainError(e));}
     finally{setParamBusy(false);}
   }
+  const [viewedPeriod,setViewedPeriod] = useState<string|null>(null);
+  const [periodNotice,setPeriodNotice] = useState('');
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('09');
   const [productsPath, setProductsPath] = useState<string | null>(null);
@@ -171,7 +173,7 @@ export function App() {
   const [ingredientBusy, setIngredientBusy] = useState(false);
   const period = `${year}-${month}`;
   const [mappingSaving, setMappingSaving] = useState(false);
-  const busy = pending || catalogLoading || dialogBusy || mappingSaving;
+  const busy = pending || catalogLoading || dialogBusy || mappingSaving || recipeBusy || ingredientBusy || costBusy || salePriceBusy || dreBusy || expenseBusy || paramBusy;
   const canSubmit = /^20\d\d$/.test(year) && Boolean(productsPath && paymentsPath) && !busy;
   useEffect(() => {
     let active = true;
@@ -367,15 +369,72 @@ export function App() {
     try {
       const data = await invoke<ImportSummary>('import_reports', { period, productsPath, paymentsPath });
       setResult(data);
+      await refreshPeriod(period);
     } catch (e) { setError(explainError(e)); }
     finally { setPending(false); }
   }
+  /** Descarta resultados do mês anterior antes de trocar ano/mês ou consultar novamente. */
+  function clearPeriodViews(clearInputs=false){
+    setResult(null);setFilter('');setEditingCode(null);setEditedName('');setEditedCategory('');
+    setIngredients([]);setIngredientError('');setIngredientInfo('');
+    setRecipeCost(null);setRecipeDetail(null);setRecipeError('');setRecipeApprovalMessage('');
+    setCostRows([]);setCmvSummary(null);setCostError('');
+    setExpenseRows([]);setExpenseError('');setExpenseNotice('');
+    setDrePreview(null);setDreError('');setSalePriceNotice('');
+    setParameters([]);setParamMessage('');
+    setViewedPeriod(null);
+    if(clearInputs){
+      setProductsPath(null);setPaymentsPath(null);
+      setRecipeProduct('');setRecipeIngredient('');setRecipeQty('');setRecipeApprovalNote('');
+      setIngredientCode('');setIngredientName('');setIngredientQty('');setIngredientCost('');
+      setIngredientSupplier('');setIngredientFreight('0');setIngredientSt('0');
+      setSalePriceCode('');setSalePriceCents('');
+      setExpenseCategory('');setExpenseDescription('');setExpenseAmount('');setExpenseReference('');
+      cancelParameterEdit();
+      setPeriodNotice('Competência alterada. Clique em Consultar competência para carregar os dados de todos os módulos.');
+    }
+  }
+  async function refreshPeriod(reference:string){
+    const records=await consultPeriodModules(reference,(command,args)=>invoke(command,args));
+    const summary=records.load_period_summary;
+    if(summary.status==='fulfilled')setResult(summary.value as ImportSummary);
+    else setError(`Conciliação indisponível para ${reference}: ${explainError(summary.reason)}`);
+
+    const ingredientResult=records.list_ingredients;
+    if(ingredientResult.status==='fulfilled')setIngredients(ingredientResult.value as typeof ingredients);
+    else setIngredientError(explainError(ingredientResult.reason));
+
+    const costs=records.monthly_cost_overview;
+    if(costs.status==='fulfilled')setCostRows(costs.value as typeof costRows);
+    else setCostError(explainError(costs.reason));
+
+    const cmv=records.monthly_cmv_summary;
+    if(cmv.status==='fulfilled')setCmvSummary(cmv.value as typeof cmvSummary);
+    else setCostError(previous=>[previous,explainError(cmv.reason)].filter(Boolean).join(' · '));
+
+    const dre=records.get_dre_preview;
+    if(dre.status==='fulfilled')setDrePreview(dre.value as typeof drePreview);
+    else setDreError(explainError(dre.reason));
+
+    const expenses=records.list_expenses;
+    if(expenses.status==='fulfilled')setExpenseRows(expenses.value as typeof expenseRows);
+    else setExpenseError(explainError(expenses.reason));
+
+    const params=records.list_financial_parameters;
+    if(params.status==='fulfilled')setParameters(params.value as FinancialParameter[]);
+    else setParamMessage(explainError(params.reason));
+    const errors=Object.values(records).filter(item=>item.status==='rejected').length;
+    setViewedPeriod(reference);
+    setPeriodNotice(errors===0
+      ? `Competência ${periodLabel(reference)} atualizada em todos os módulos.`
+      : `Competência ${periodLabel(reference)} consultada. ${errors} módulo(s) sem dados ou com pendência; confira os avisos nas seções correspondentes.`);
+  }
   async function loadSaved() {
-    if (busy || !/^20\d\d$/.test(year)) return;
-    setPending(true); setError(null); setResult(null); setFilter('');
-    try { setResult(await invoke<ImportSummary>('load_period_summary', { period })); }
-    catch (e) { setError(explainError(e)); }
-    finally { setPending(false); }
+    if (busy || !/^20\\d\\d$/.test(year)) return;
+    setPending(true);setError(null);clearPeriodViews();
+    try { await refreshPeriod(period); }
+    catch(e){setError(explainError(e));}
+    finally {setPending(false);}
   }
   const visibleProducts = result?.unmappedProducts.filter((p) => `${p.externalCode} ${p.name} ${p.category}`.toLocaleLowerCase('pt-BR').includes(filter.toLocaleLowerCase('pt-BR'))) || [];
   return (
