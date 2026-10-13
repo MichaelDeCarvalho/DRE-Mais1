@@ -35,6 +35,10 @@ export function App() {
   const [recipeError, setRecipeError] = useState('');
   const [recipeCost, setRecipeCost] = useState<{ productCode:string; period:string; totalCostCents:number; ingredientCount:number } | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
+  const [recipeDetail, setRecipeDetail] = useState<{
+    productCode:string;productName:string;period:string;totalCostCents:number;
+    lines:Array<{ingredientCode:string;ingredientName:string;unit:string;quantityUsed:number;quantityPurchased:number;purchaseTotalCents:number;costUsedCents:number}>
+  } | null>(null);
   const [ingredientCode, setIngredientCode] = useState('');
   const [ingredientName, setIngredientName] = useState('');
   const [ingredientUnit, setIngredientUnit] = useState('G');
@@ -168,14 +172,16 @@ export function App() {
         period, productCode: recipeProduct.trim(), ingredientCode: recipeIngredient.trim(), quantityBase: Number(recipeQty),
       });
       setRecipeCost(result);setRecipeIngredient('');setRecipeQty('');
+      setRecipeDetail(await invoke<typeof recipeDetail>('get_recipe_detail',{period,productCode:recipeProduct.trim()}));
     } catch(e) {setRecipeError(explainError(e));}
     finally {setRecipeBusy(false);}
   }
   async function inspectRecipe() {
     if(recipeBusy)return;
-    setRecipeBusy(true);setRecipeError('');setRecipeCost(null);
+    setRecipeBusy(true);setRecipeError('');setRecipeCost(null);setRecipeDetail(null);
     try {
       setRecipeCost(await invoke<typeof recipeCost>('get_recipe_cost',{period,productCode:recipeProduct.trim()}));
+      setRecipeDetail(await invoke<typeof recipeDetail>('get_recipe_detail',{period,productCode:recipeProduct.trim()}));
     }catch(e){setRecipeError(explainError(e));}
     finally{setRecipeBusy(false);}
   }
@@ -279,7 +285,7 @@ export function App() {
         <section className="section-block" aria-labelledby="recipe-heading">
           <div className="section-heading"><span className="step">07</span><div><h2 id="recipe-heading">Ficha técnica — custo teórico unitário</h2><p>Vincule quantidades consumidas ao código do produto e ao insumo cadastrado. Não calcula estoque nem CMV contábil.</p></div></div>
           <div className="selectors">
-            <label>Código do produto vendido<input value={recipeProduct} disabled={recipeBusy} onChange={e=>{setRecipeProduct(e.target.value);setRecipeCost(null);}} placeholder="Código externo já mapeado"/></label>
+            <label>Código do produto vendido<input value={recipeProduct} disabled={recipeBusy} onChange={e=>{setRecipeProduct(e.target.value);setRecipeCost(null);setRecipeDetail(null);}} placeholder="Código externo já mapeado"/></label>
             <label>Código do insumo<input value={recipeIngredient} disabled={recipeBusy} onChange={e=>setRecipeIngredient(e.target.value)} placeholder="Ex.: LEITE"/></label>
             <label>Consumo (G, ML ou UN)<input value={recipeQty} disabled={recipeBusy} inputMode="numeric" onChange={e=>setRecipeQty(e.target.value)} placeholder="150"/></label>
             <button type="button" className="primary-button" disabled={recipeBusy || !recipeProduct.trim() || !recipeIngredient.trim() || !recipeQty.trim()} onClick={saveRecipeLine}>Adicionar ingrediente à ficha</button>
@@ -287,6 +293,12 @@ export function App() {
           </div>
           <p>O vínculo de cada insumo é único por produto e competência. Correções de receitas existentes serão implementadas com versionamento e revisão controlada, não por sobrescrita silenciosa.</p>
           {recipeError && <div className="feedback feedback-error" role="alert">{recipeError}</div>}
+          {recipeDetail && <div className="scroll-table" aria-label="Composição detalhada da ficha técnica">
+            <h3>Composição de {recipeDetail.productName} — {recipeDetail.period}</h3>
+            <table><thead><tr><th>Código</th><th>Insumo</th><th>Unidade</th><th className="num">Consumo</th><th className="num">Quantidade comprada</th><th className="num">Custo compra</th><th className="num">Custo consumido</th></tr></thead>
+            <tbody>{recipeDetail.lines.map(line=><tr key={line.ingredientCode}><td>{line.ingredientCode}</td><td>{line.ingredientName}</td><td>{line.unit}</td><td className="num">{line.quantityUsed}</td><td className="num">{line.quantityPurchased}</td><td className="num">{brl(line.purchaseTotalCents)}</td><td className="num">{brl(Math.round(line.costUsedCents))}</td></tr>)}</tbody></table>
+            <p><strong>Custo unitário teórico: {brl(Math.round(recipeDetail.totalCostCents))}</strong>. Cálculo interno preserva frações de centavo até o total.</p>
+          </div>}
           {recipeCost && <div className="feedback feedback-info" role="status"><strong>Ficha do produto {recipeCost.productCode}: {recipeCost.ingredientCount} insumo(s).</strong><p>Custo teórico unitário: {brl(Math.round(recipeCost.totalCostCents))}. Valor interno antes do arredondamento: {recipeCost.totalCostCents.toFixed(4)} centavos.</p></div>}
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
