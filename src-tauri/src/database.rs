@@ -288,7 +288,7 @@ mod tests {
         }
         let db=open_database(&path).unwrap();
         let version:i64=db.pragma_query_value(None,"user_version",|row|row.get(0)).unwrap();
-        assert_eq!(version,11);
+        assert_eq!(version,12);
         let mapping:i64=db.query_row("SELECT COUNT(*) FROM product_external_codes WHERE external_code='TESTE_ANTIGO'",[],|r|r.get(0)).unwrap();
         assert_eq!(mapping,1);
         let rules:i64=db.query_row("SELECT COUNT(*) FROM financial_rule_versions WHERE effective_from='2026-09'",[],|r|r.get(0)).unwrap();
