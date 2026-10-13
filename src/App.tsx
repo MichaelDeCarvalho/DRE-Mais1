@@ -160,6 +160,11 @@ export function App() {
   const [expenseRows,setExpenseRows] = useState<Array<{id:number;period:string;expenseKind:string;category:string;description:string;amountCents:number;reference:string}>>([]);
   const [dreBusy,setDreBusy] = useState(false);
   const [dreError,setDreError] = useState('');
+  type DreWorkbookSource={period:string;filename:string;sha256:string;sourceMonthLabel:string;revenueCents:number;confirmation:string;rows:Array<{sourceRow:number;label:string;rawAuxiliary:string;rawValue:string;valueCents:number|null;valueKind:string}>};
+  const [dreWorkbook,setDreWorkbook]=useState<DreWorkbookSource|null>(null);
+  const [dreWorkbookBusy,setDreWorkbookBusy]=useState(false);
+  const [dreWorkbookMessage,setDreWorkbookMessage]=useState('');
+  const [dreWorkbookError,setDreWorkbookError]=useState('');
   const [drePreview,setDrePreview] = useState<{period:string;revenueCents:number;paymentsCents:number;differenceCents:number;reconciled:boolean;approvedCmvCents:number|null;contributionBeforeOtherExpensesCents:number|null;pendingProductCodes:number;approvedProductCodes:number;status:string;unregisteredComponents:string[];recordedVariableCents:number;recordedFixedCents:number;recordedTaxCents:number;recordedExpenseCount:number;estimatedRoyaltiesCents:number|null;estimatedPaymentFees:Array<{code:string;label:string;baseCents:number;rateBasisPoints:number|null;estimatedFeeCents:number|null;status:string}>} | null>(null);
   const [cmvSummary,setCmvSummary] = useState<{period:string;productCodes:number;approvedCodes:number;pendingCodes:number;approvedQuantity:number;approvedCostCents:number;complete:boolean} | null>(null);
 
@@ -181,7 +186,7 @@ export function App() {
   const [ingredientBusy, setIngredientBusy] = useState(false);
   const period = `${year}-${month}`;
   const [mappingSaving, setMappingSaving] = useState(false);
-  const busy = pending || catalogLoading || dialogBusy || mappingSaving || recipeBusy || ingredientBusy || costBusy || salePriceBusy || dreBusy || expenseBusy || paramBusy;
+  const busy = pending || catalogLoading || dialogBusy || mappingSaving || recipeBusy || ingredientBusy || costBusy || salePriceBusy || dreBusy || expenseBusy || paramBusy || dreWorkbookBusy;
   const canSubmit = /^20\d\d$/.test(year) && Boolean(productsPath && paymentsPath) && !busy;
   useEffect(() => {
     let active = true;
@@ -389,6 +394,7 @@ export function App() {
     setCostRows([]);setCmvSummary(null);setCostError('');
     setExpenseRows([]);setExpenseError('');setExpenseNotice('');
     setDrePreview(null);setDreError('');setSalePriceNotice('');
+    setDreWorkbook(null);setDreWorkbookError('');setDreWorkbookMessage('');
     setParameters([]);setParamMessage('');
     setViewedPeriod(null);
     if(clearInputs){
@@ -431,11 +437,34 @@ export function App() {
     const params=records.list_financial_parameters;
     if(params.status==='fulfilled')setParameters(params.value as FinancialParameter[]);
     else setParamMessage(explainError(params.reason));
+    const reference=records.get_validated_dre_workbook;
+    if(reference.status==='fulfilled')setDreWorkbook(reference.value as DreWorkbookSource|null);
+    else setDreWorkbookError(explainError(reference.reason));
     const errors=Object.values(records).filter(item=>item.status==='rejected').length;
     setViewedPeriod(reference);
     setPeriodNotice(errors===0
       ? `Competência ${periodLabel(reference)} atualizada em todos os módulos.`
       : `Competência ${periodLabel(reference)} consultada. ${errors} módulo(s) sem dados ou com pendência; confira os avisos nas seções correspondentes.`);
+  }
+  async function importValidatedDreWorkbook(){
+    if(busy||!/^20\d\d$/.test(year))return;
+    setDreWorkbookError('');setDreWorkbookMessage('');
+    try{
+      const chosen=await open({multiple:false,directory:false,title:'Selecionar planilha DRE validada para a competência',filters:[{name:'Planilha Excel',extensions:['xlsx','xls']}]});
+      if(typeof chosen!=='string')return;
+      setDreWorkbookBusy(true);
+      try{
+        const saved=await invoke<DreWorkbookSource>('import_validated_dre_workbook',{period,path:chosen});
+        setDreWorkbook(saved);
+        setDreWorkbookMessage('Referência registrada com arquivo original e rubricas preservadas. Não foram criados lançamentos contábeis duplicados.');
+      }catch(e){setDreWorkbookError(explainError(e));}
+      finally{setDreWorkbookBusy(false);}
+    }catch(e){setDreWorkbookError(explainError(e));}
+  }
+  function sourceValue(row:DreWorkbookSource['rows'][number]){
+    if(row.valueKind==='MONETARIO'&&row.valueCents!==null)return brl(row.valueCents);
+    if(row.valueKind==='PERCENTUAL'&&Number.isFinite(Number(row.rawValue)))return (Number(row.rawValue)*100).toFixed(2)+'%';
+    return row.rawValue||'—';
   }
   async function loadSaved() {
     if (busy || !/^20\d\d$/.test(year)) return;
@@ -627,6 +656,35 @@ export function App() {
             <p><strong>Total registrado: {brl(drePreview.recordedVariableCents + drePreview.recordedFixedCents + drePreview.recordedTaxCents)}</strong> — soma dos lançamentos classificados nesta competência, não representa o total definitivo de despesas.</p>
             <p>Componentes ainda sem apuração: {drePreview.unregisteredComponents.join('; ')}. Nenhum resultado líquido ou lucro é calculado nesta prévia.</p>
           </div>}
+        </section>
+        <section className="section-block" aria-labelledby="validated-dre-heading">
+          <div className="section-heading"><span className="step">✓</span><div><h2 id="validated-dre-heading">DRE da planilha — referência validada</h2>
+            <p>Espelho das rubricas e valores do Excel preservado no SQLite. Não soma subtotais nem transfere automaticamente estes valores para despesas ou CMV operacional.</p></div></div>
+          <div className="action-line">
+            <p>Competência: {periodLabel(period)} · Origem: aba DRE MENSAL.</p>
+            <button type="button" className="outline-button" onClick={importValidatedDreWorkbook} disabled={busy||Boolean(dreWorkbook)}>
+              {dreWorkbookBusy?'Registrando arquivo…':'Registrar planilha DRE validada'}
+            </button>
+          </div>
+          {!dreWorkbook&&!dreWorkbookError&&<p className="footnote">Primeiro consulte a competência. O cadastro exige receita igual aos relatórios conciliados. Referências cadastradas são imutáveis.</p>}
+          {dreWorkbookError&&<div className="feedback feedback-error" role="alert">{dreWorkbookError}</div>}
+          {dreWorkbookMessage&&<div className="feedback feedback-info" role="status">{dreWorkbookMessage}</div>}
+          {dreWorkbook&&<>
+            <div className="feedback feedback-info" role="status">
+              <strong>Arquivo preservado: {dreWorkbook.filename} · {periodLabel(dreWorkbook.period)}</strong>
+              <p>Receita de referência: {brl(dreWorkbook.revenueCents)} · {dreWorkbook.rows.length} rubricas · SHA-256: <code>{dreWorkbook.sha256.slice(0,12)}…</code>.</p>
+              <p>Rótulo de mês no arquivo: {dreWorkbook.sourceMonthLabel||'Não informado'}. Preservado sem ajustar os valores.</p>
+            </div>
+            <div className="scroll-table" aria-label="Valores originais validados da DRE">
+              <table><thead><tr><th>Célula</th><th>Rubrica</th><th>Valor de referência</th><th>Auxiliar C</th><th>Tipo</th></tr></thead>
+                <tbody>{dreWorkbook.rows.map(row=><tr key={row.sourceRow}>
+                  <td className="mono">D{row.sourceRow}</td><td>{row.label}</td><td className="num">{sourceValue(row)}</td>
+                  <td>{row.rawAuxiliary||'—'}</td><td>{row.valueKind==='MONETARIO'?'Monetário':row.valueKind==='PERCENTUAL'?'Percentual':row.valueKind==='SEM_VALOR'?'Sem valor':'Texto'}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+            <p className="footnote">Arquivo original preservado. Esta tabela é uma referência documental; totais, subtotais e percentuais não constituem lançamentos independentes.</p>
+          </>}
         </section>
         <section className="section-block" aria-labelledby="expense-heading">
           <div className="section-heading"><span className="step">11</span><div><h2 id="expense-heading">Despesas por competência</h2><p>Lançamentos reais e identificados por categoria. Nenhuma alíquota tributária é presumida.</p></div></div>
