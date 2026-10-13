@@ -93,19 +93,24 @@ export function App() {
       setParamMessage('Informe a competência de início da nova vigência.');return;
     }
     setParamBusy(true);setParamMessage('');
+    const savedPeriod=paramEffectiveFrom;
     try {
       await invoke('register_financial_parameter',{
         code:paramCode.trim().toUpperCase(),name:paramName,category:paramCategory,base:paramBase,
-        period:paramEffectiveFrom,basisPoints:Math.round(Number(raw)*100),source:paramSource,note:paramNote
+        period:savedPeriod,basisPoints:Math.round(Number(raw)*100),source:paramSource,note:paramNote
       });
-      const savedPeriod=paramEffectiveFrom;
+    }catch(e){setParamMessage(explainError(e));setParamBusy(false);return;}
+    cancelParameterEdit();
+    setParamMessage(`Vigência cadastrada a partir de ${periodLabel(savedPeriod)}. Para conferir seu efeito, selecione essa competência e clique em Consultar competência. Versões anteriores preservadas.`);
+    try {
       const refreshed=await invoke<FinancialParameter[]>('list_financial_parameters',{period});
       setParameters(refreshed);
-      cancelParameterEdit();
-      setParamMessage(`Vigência cadastrada a partir de ${periodLabel(savedPeriod)}. Para conferir seu efeito, selecione essa competência e clique em Consultar competência. Versões anteriores preservadas.`);
-      setDrePreview(null);
-    } catch(e){setParamMessage(explainError(e));}
-    finally{setParamBusy(false);}
+    }catch(e){setParameters([]);setParamMessage(`Vigência salva em ${periodLabel(savedPeriod)}, mas a lista não pôde ser atualizada: ${explainError(e)}. Clique em Atualizar parâmetros.`);}
+    if(viewedPeriod===period){
+      try{setDrePreview(await invoke<typeof drePreview>('get_dre_preview',{period}));setDreError('');}
+      catch(e){setDrePreview(null);setDreError(`Não foi possível atualizar a prévia: ${explainError(e)}`);}
+    }
+    setParamBusy(false);
   }
   const [viewedPeriod,setViewedPeriod] = useState<string|null>(null);
   const [periodNotice,setPeriodNotice] = useState('');
