@@ -12,7 +12,7 @@ pub fn calculate_fees(methods:&[MethodTotal])->Result<Vec<PaymentFeeEstimate>,St
  methods.iter().map(|m|{
   let rate=match m.code.as_str(){
    "credit"=>Some(200_i64),"debit"=>Some(100),"pix"=>Some(100),"wallet"=>Some(300),
-   "cash"=>Some(0),
+   "cash"=>Some(0),"picpay"=>Some(300),"meal_voucher"=>Some(400),
    // Voucher pode ser vale-refeicao OU outro beneficio: pedir classificacao.
    "voucher"|"other"=>None,
    _=>None,
@@ -42,10 +42,14 @@ mod tests{
   MethodTotal{code:"wallet".into(),label:"Carteira".into(),total_cents:10_000},
   MethodTotal{code:"voucher".into(),label:"Voucher".into(),total_cents:10_000},
   MethodTotal{code:"other".into(),label:"Outro".into(),total_cents:10_000},
+  MethodTotal{code:"picpay".into(),label:"PicPay".into(),total_cents:10_000},
+  MethodTotal{code:"meal_voucher".into(),label:"Vale Refeicao".into(),total_cents:10_000},
  ];
  let v=calculate_fees(&rows).unwrap();
- assert_eq!(v.iter().map(|x|x.estimated_fee_cents.unwrap_or(0)).sum::<i64>(),700);
+ assert_eq!(v.iter().map(|x|x.estimated_fee_cents.unwrap_or(0)).sum::<i64>(),1400);
  assert!(v[4].estimated_fee_cents.is_none());
  assert!(v[5].estimated_fee_cents.is_none());
+ assert_eq!(v[6].estimated_fee_cents,Some(300));
+ assert_eq!(v[7].estimated_fee_cents,Some(400));
  }
 }
