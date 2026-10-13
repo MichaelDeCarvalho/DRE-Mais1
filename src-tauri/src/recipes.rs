@@ -58,7 +58,7 @@ pub struct ProductCostRow {
  pub product_code:String,pub product_name:String,
  pub quantity_sold:i64,pub sales_cents:i64,
  pub unit_cost_cents:Option<f64>,pub total_theoretical_cents:Option<f64>,
- pub status:String,
+ pub status:String, pub sale_price_cents:Option<i64>, pub cmv_percent:Option<f64>,
 }
 pub fn monthly_cost_overview(db:&Connection,period:&str)->Result<Vec<ProductCostRow>,String>{
  if !valid_period(period){return Err("Competencia invalida.".into());}
@@ -75,17 +75,18 @@ pub fn monthly_cost_overview(db:&Connection,period:&str)->Result<Vec<ProductCost
   let mapped:Option<i64>=db.query_row("SELECT product_id FROM product_external_codes WHERE store_id=1 AND external_code=?1",[&code],|r|r.get(0))
    .optional().map_err(|e|e.to_string())?;
   if mapped.is_none(){
-   out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_CADASTRO".into()});
+   out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_CADASTRO".into(),sale_price_cents:None,cmv_percent:None});
    continue;
   }
+  let price=crate::sale_prices::get(db,period,&code)?.map(|p|p.price_cents);
   // Sem ficha completa validada, nao emitir custo numerico falso.
   match recipe_detail(db,period,&code) {
    Ok(detail)=>{
     let total=detail.total_cost_cents*qty as f64;
     if !total.is_finite(){return Err("CMV teorico excedeu limite".into());}
-    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:"FICHA_PARCIAL_NAO_HOMOLOGADA".into()});
+    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:"FICHA_PARCIAL_NAO_HOMOLOGADA".into(),sale_price_cents:price,cmv_percent:price.map(|p|100.0*detail.total_cost_cents/p as f64)});
    },
-   Err(_)=>out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_FICHA_OU_CUSTO".into()}),
+   Err(_)=>out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_FICHA_OU_CUSTO".into(),sale_price_cents:price,cmv_percent:None}),
   }
  }
  if out.is_empty(){return Err("Nenhuma venda importada para a competencia.".into());}
