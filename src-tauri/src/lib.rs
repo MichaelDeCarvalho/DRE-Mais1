@@ -168,6 +168,15 @@ async fn approve_recipe(app:tauri::AppHandle,period:String,product_code:String,n
  }).await.map_err(|e|e.to_string())?
 }
 
+#[tauri::command]
+async fn monthly_cmv_summary(app:tauri::AppHandle,period:String)->Result<recipes::MonthlyCmvSummary,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  recipes::monthly_cmv_summary(&db,&period)
+ }).await.map_err(|e|e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -180,7 +189,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price, approve_recipe])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price, approve_recipe, monthly_cmv_summary])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
