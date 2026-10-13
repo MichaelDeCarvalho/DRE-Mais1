@@ -144,6 +144,19 @@ pub fn recipe_cost(db:&Connection,period:&str,product_code:&str)->Result<RecipeC
 #[cfg(test)]
 mod tests{
  use super::*;use crate::{database,ingredients};
+ #[test] fn monthly_overview_never_calls_missing_recipe_zero_cost(){
+  use crate::importer;
+  let temp=tempfile::tempdir().unwrap();
+  let mut db=database::open_database(&temp.path().join("overview.sqlite")).unwrap();
+  let dir=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures");
+  database::save_reports(&mut db,"2026-09",
+   importer::parse_products(&dir.join("produtos-set-2026.xlsx")).unwrap(),
+   importer::parse_payments(&dir.join("pagamentos-set-2026.xlsx")).unwrap()).unwrap();
+  let overview=monthly_cost_overview(&db,"2026-09").unwrap();
+  assert_eq!(overview.len(),120);
+  assert!(overview.iter().all(|p|p.unit_cost_cents.is_none() && p.total_theoretical_cents.is_none()));
+  assert!(overview.iter().all(|p|p.status=="SEM_CADASTRO"));
+ }
  #[test] fn recipe_is_historical_and_blocks_duplicate(){
   let t=tempfile::tempdir().unwrap();let mut db=database::open_database(&t.path().join("recipe.sqlite")).unwrap();
   db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Cafe com leite')",[]).unwrap();
