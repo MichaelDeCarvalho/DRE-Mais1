@@ -76,3 +76,23 @@ body {background:var(--app-bg);color:var(--app-text);}
 :root[data-theme="dark"] .primary-button {background:#198878;color:#fff;}
 :root[data-theme="dark"] .primary-button:disabled {background:#34465a;color:#99a7b9;}
 @media(max-width:850px) {.shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto;gap:15px}.app-nav{flex-direction:row;overflow-x:auto}.app-nav .nav-link{white-space:nowrap}.content{padding:22px 15px}}
+
+
+/* Competencia global e formulario de vigencia: contraste em ambos os temas. */
+.period-notice {padding:12px 15px;border:1px solid var(--app-border);border-radius:9px;background:var(--app-soft);color:var(--app-soft-text);font-size:13px;}
+.parameter-actions {display:flex;gap:9px;align-items:center;flex-wrap:wrap;}
+.parameter-edit-form {margin-top:21px;border:2px solid var(--app-accent);border-radius:13px;padding:21px;background:var(--app-soft);color:var(--app-text);scroll-margin:26px;}
+.parameter-edit-header {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;}
+.parameter-edit-header strong {font-size:17px;}
+.parameter-edit-header p {font-size:13px;line-height:1.55;color:var(--app-muted);margin:7px 0 0;}
+.edit-mode-tag {white-space:nowrap;font-size:12px;font-weight:700;border:1px solid var(--app-accent);border-radius:20px;padding:6px 10px;color:var(--app-accent);}
+.parameter-fields {align-items:stretch;gap:12px;}
+.parameter-fields label {flex:1 1 200px;color:var(--app-text);font-size:12px;font-weight:650;}
+.parameter-fields input,.parameter-fields select {min-width:0;width:100%;background:var(--app-field);color:var(--app-text);border:1px solid var(--app-field-border);}
+.parameter-fields input[readonly],.parameter-fields select:disabled {opacity:.68;background:var(--app-surface);cursor:not-allowed;}
+.parameter-fields .parameter-required {color:var(--app-text);font-weight:750;}
+.parameter-fields .parameter-required input {border:2px solid var(--app-accent);background:var(--app-field);box-shadow:0 0 0 2px color-mix(in srgb,var(--app-accent) 12%,transparent);}
+.parameter-fields .parameter-required input:focus-visible {outline:3px solid var(--app-accent);outline-offset:2px;}
+.parameter-edit-form .action-line {margin-top:10px;border-top:1px solid var(--app-border);}
+.parameter-edit-form .action-line p {color:var(--app-text);}
+@media(max-width:850px){.parameter-edit-header{flex-direction:column}.edit-mode-tag{white-space:normal}.parameter-actions{justify-content:flex-start}}
