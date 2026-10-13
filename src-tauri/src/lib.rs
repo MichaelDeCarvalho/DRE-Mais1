@@ -123,6 +123,15 @@ async fn get_recipe_cost(app: tauri::AppHandle,period:String,product_code:String
  }).await.map_err(|e|e.to_string())?
 }
 
+#[tauri::command]
+async fn get_recipe_detail(app:tauri::AppHandle,period:String,product_code:String)->Result<recipes::RecipeDetail,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  recipes::recipe_detail(&db,&period,&product_code)
+ }).await.map_err(|e|e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -135,7 +144,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
