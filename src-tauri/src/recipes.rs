@@ -115,6 +115,28 @@ pub fn is_approved(db:&Connection,period:&str,code:&str)->Result<bool,String>{
  .optional().map_err(|e|e.to_string())?;
  Ok(found.flatten().is_some())
 }
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct MonthlyCmvSummary {
+ pub period:String,pub product_codes:usize,pub approved_codes:usize,
+ pub pending_codes:usize,pub approved_quantity:i64,
+ pub approved_cost_cents:f64,pub complete:bool,
+}
+pub fn monthly_cmv_summary(db:&Connection,period:&str)->Result<MonthlyCmvSummary,String>{
+ let rows=monthly_cost_overview(db,period)?;
+ let approved=rows.iter().filter(|r|r.status=="FICHA_APROVADA").collect::<Vec<_>>();
+ let approved_quantity=approved.iter().try_fold(0_i64,|acc,r|
+  acc.checked_add(r.quantity_sold).ok_or("Quantidade vendida excedeu limite"))?;
+ let mut total=0.0_f64;
+ for row in &approved {
+  total+=row.total_theoretical_cents.ok_or("Ficha aprovada sem custo calculado")?;
+  if !total.is_finite(){return Err("Custo aprovado excedeu limite.".into());}
+ }
+ let codes=rows.len();let approved_codes=approved.len();
+ Ok(MonthlyCmvSummary{period:period.into(),product_codes:codes,approved_codes,
+  pending_codes:codes-approved_codes,approved_quantity,
+  approved_cost_cents:total,complete:approved_codes==codes})
+}
 fn valid_period(p:&str)->bool {
  let v=p.split('-').collect::<Vec<_>>();
  v.len()==2 && v[0].len()==4 && v[0].chars().all(|c|c.is_ascii_digit())
@@ -180,6 +202,21 @@ mod tests{
   assert_eq!(overview.len(),120);
   assert!(overview.iter().all(|p|p.unit_cost_cents.is_none() && p.total_theoretical_cents.is_none()));
   assert!(overview.iter().all(|p|p.status=="SEM_CADASTRO"));
+ }
+ #[test]fn cmv_summary_does_not_close_with_pending_products(){
+  use crate::importer;
+  let temp=tempfile::tempdir().unwrap();
+  let mut db=database::open_database(&temp.path().join("summary.sqlite")).unwrap();
+  let dir=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures");
+  database::save_reports(&mut db,"2026-09",
+   importer::parse_products(&dir.join("produtos-set-2026.xlsx")).unwrap(),
+   importer::parse_payments(&dir.join("pagamentos-set-2026.xlsx")).unwrap()).unwrap();
+  let overview=monthly_cmv_summary(&db,"2026-09").unwrap();
+  assert_eq!(overview.product_codes,120);
+  assert_eq!(overview.approved_codes,0);
+  assert_eq!(overview.pending_codes,120);
+  assert!(!overview.complete);
+  assert_eq!(overview.approved_cost_cents,0.0);
  }
  #[test] fn recipe_is_historical_and_blocks_duplicate(){
   let t=tempfile::tempdir().unwrap();let mut db=database::open_database(&t.path().join("recipe.sqlite")).unwrap();
