@@ -44,6 +44,9 @@ export function App() {
   const [salePriceBusy,setSalePriceBusy] = useState(false);
   const [salePriceNotice,setSalePriceNotice] = useState('');
   const [costError,setCostError] = useState('');
+  const [dreBusy,setDreBusy] = useState(false);
+  const [dreError,setDreError] = useState('');
+  const [drePreview,setDrePreview] = useState<{period:string;revenueCents:number;paymentsCents:number;differenceCents:number;reconciled:boolean;approvedCmvCents:number|null;contributionBeforeOtherExpensesCents:number|null;pendingProductCodes:number;approvedProductCodes:number;status:string;unregisteredComponents:string[]} | null>(null);
   const [cmvSummary,setCmvSummary] = useState<{period:string;productCodes:number;approvedCodes:number;pendingCodes:number;approvedQuantity:number;approvedCostCents:number;complete:boolean} | null>(null);
 
   const [recipeDetail, setRecipeDetail] = useState<{
@@ -217,6 +220,13 @@ export function App() {
     }catch(e){setSalePriceNotice(explainError(e));}
     finally{setSalePriceBusy(false);}
   }
+  async function consultDrePreview(){
+    if(dreBusy)return;
+    setDreBusy(true);setDreError('');setDrePreview(null);
+    try{setDrePreview(await invoke<typeof drePreview>('get_dre_preview',{period}));}
+    catch(e){setDreError(explainError(e));}
+    finally{setDreBusy(false);}
+  }
   async function consultCostOverview(){
     if(costBusy)return;
     setCostBusy(true);setCostError('');setCostRows([]);setCmvSummary(null);
@@ -369,6 +379,19 @@ export function App() {
             <button type="button" className="primary-button" disabled={salePriceBusy||!salePriceCode.trim()||!salePriceCents.trim()} onClick={saveSalePrice}>Salvar preço</button>
           </div>
           {salePriceNotice && <div className="feedback feedback-info" role="status">{salePriceNotice}</div>}
+        </section>
+        <section className="section-block" aria-labelledby="dre-preview-heading">
+          <div className="section-heading"><span className="step">10</span><div><h2 id="dre-preview-heading">Prévia gerencial — DRE não fechada</h2><p>Consulta somente leitura. Não estima tributos, taxas, despesas nem estoque ausentes.</p></div></div>
+          <div className="action-line"><p>Confira receita conciliada e cobertura das fichas aprovadas para a competência escolhida.</p><button type="button" className="outline-button" disabled={dreBusy} onClick={consultDrePreview}>{dreBusy?'Consultando…':'Consultar prévia gerencial'}</button></div>
+          {dreError && <div className="feedback feedback-error" role="alert">{dreError}</div>}
+          {drePreview && <div className="feedback feedback-info" role="status">
+            <strong>Competência {drePreview.period}: {drePreview.status==='CMV_APROVADO_DRE_INCOMPLETA'?'CMV técnico coberto, DRE ainda incompleta':drePreview.status==='CMV_INCOMPLETO'?'CMV incompleto':'Conciliação pendente'}</strong>
+            <p>Receita líquida importada: {brl(drePreview.revenueCents)} · Pagamentos: {brl(drePreview.paymentsCents)} · Diferença: {brl(drePreview.differenceCents)}.</p>
+            <p>Fichas aprovadas: {drePreview.approvedProductCodes} · Pendentes: {drePreview.pendingProductCodes}.</p>
+            <p>CMV técnico aprovado para a competência: {drePreview.approvedCmvCents===null?'Não disponível — cobertura incompleta':brl(Math.round(drePreview.approvedCmvCents))}.</p>
+            <p>Receita menos CMV técnico (antes de outras despesas): {drePreview.contributionBeforeOtherExpensesCents===null?'Não disponível':brl(Math.round(drePreview.contributionBeforeOtherExpensesCents))}.</p>
+            <p>Componentes ainda sem apuração: {drePreview.unregisteredComponents.join('; ')}. Nenhum resultado líquido ou lucro é calculado nesta prévia.</p>
+          </div>}
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
