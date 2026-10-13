@@ -314,6 +314,7 @@ fn parse_method(raw: &str) -> Result<(String, &'static str, &'static str), Strin
         "credito" => ("credit", "STANDARD"), "credito manual" => ("credit", "MANUAL"),
         "debito" => ("debit", "STANDARD"), "debito manual" => ("debit", "MANUAL"),
         "pix" => ("pix", "STANDARD"), "carteira digital" => ("wallet", "STANDARD"),
+        "picpay" => ("picpay", "STANDARD"), "vale refeicao" => ("meal_voucher", "STANDARD"),
         "outro" => ("other", "STANDARD"), "dinheiro" => ("cash", "STANDARD"),
         "voucher" => ("voucher", "STANDARD"),
         _ => return Err(format!("PENDENTE DE VALIDAÇÃO: método de pagamento desconhecido '{raw}'")),
@@ -321,7 +322,7 @@ fn parse_method(raw: &str) -> Result<(String, &'static str, &'static str), Strin
     Ok((period, canonical, kind))
 }
 pub(crate) fn normalized_method_label(code: &str) -> &'static str {
-    match code { "credit" => "Crédito", "debit" => "Débito", "pix" => "PIX", "wallet" => "Carteira Digital", "other" => "Outro", "cash" => "Dinheiro", "voucher" => "Voucher", _ => "Desconhecido" }
+    match code { "credit" => "Crédito", "debit" => "Débito", "pix" => "PIX", "wallet" => "Carteira Digital", "other" => "Outro", "cash" => "Dinheiro", "voucher" => "Voucher", "picpay" => "PicPay", "meal_voucher" => "Vale-refeição", _ => "Desconhecido" }
 }
 pub fn method_totals(rows: &[PaymentRow]) -> Result<Vec<MethodTotal>, String> {
     let mut totals: BTreeMap<String, i64> = BTreeMap::new();
@@ -389,6 +390,8 @@ mod tests {
         assert_eq!(parse_method("09/2026 - Crédito Manual").unwrap(), ("2026-09".to_string(), "credit", "MANUAL"));
         assert_eq!(parse_method("09/2026 - Débito Manual").unwrap().1, "debit");
         assert!(parse_method("09/2026 - desconhecido").is_err());
+        assert_eq!(parse_method("09/2026 - PicPay").unwrap().1,"picpay");
+        assert_eq!(parse_method("09/2026 - Vale Refeição").unwrap().1,"meal_voucher");
     }
     #[test] fn period_mismatch_is_rejected() {
         assert!(validate_selected_period("2026-08", "2026-09").is_err());
