@@ -6,6 +6,7 @@ mod recipes;
 mod sale_prices;
 mod dre_preview;
 mod expenses;
+mod financial_rules;
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Mutex};
