@@ -35,8 +35,12 @@ export function App() {
   const [recipeError, setRecipeError] = useState('');
   const [recipeCost, setRecipeCost] = useState<{ productCode:string; period:string; totalCostCents:number; ingredientCount:number } | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
-  const [costRows,setCostRows] = useState<Array<{productCode:string;productName:string;quantitySold:number;salesCents:number;unitCostCents:number|null;totalTheoreticalCents:number|null;status:string}>>([]);
+  const [costRows,setCostRows] = useState<Array<{productCode:string;productName:string;quantitySold:number;salesCents:number;unitCostCents:number|null;totalTheoreticalCents:number|null;status:string;salePriceCents:number|null;cmvPercent:number|null}>>([]);
   const [costBusy,setCostBusy] = useState(false);
+  const [salePriceCode,setSalePriceCode] = useState('');
+  const [salePriceCents,setSalePriceCents] = useState('');
+  const [salePriceBusy,setSalePriceBusy] = useState(false);
+  const [salePriceNotice,setSalePriceNotice] = useState('');
   const [costError,setCostError] = useState('');
 
   const [recipeDetail, setRecipeDetail] = useState<{
@@ -189,6 +193,17 @@ export function App() {
     }catch(e){setRecipeError(explainError(e));}
     finally{setRecipeBusy(false);}
   }
+  async function saveSalePrice(){
+    if(salePriceBusy)return;
+    setSalePriceBusy(true);setSalePriceNotice('');
+    try{
+      if(!/^\d+$/.test(salePriceCents)||!Number.isSafeInteger(Number(salePriceCents))||Number(salePriceCents)<=0)throw new Error('Informe preco positivo em centavos inteiros.');
+      await invoke('register_sale_price',{period,productCode:salePriceCode.trim(),priceCents:Number(salePriceCents)});
+      setSalePriceNotice('Preco salvo sem alterar competencias anteriores. Consulte novamente a previa de CMV.');
+      setSalePriceCode('');setSalePriceCents('');setCostRows([]);
+    }catch(e){setSalePriceNotice(explainError(e));}
+    finally{setSalePriceBusy(false);}
+  }
   async function consultCostOverview(){
     if(costBusy)return;
     setCostBusy(true);setCostError('');setCostRows([]);
@@ -316,10 +331,19 @@ export function App() {
           <div className="section-heading"><span className="step">08</span><div><h2 id="cmv-preview-heading">Prévia de custos teóricos mensais</h2><p>Somente diagnóstico: fichas parciais não representam CMV homologado nem fechamento DRE.</p></div></div>
           <div className="action-line"><p>Vendas por código e competência, relacionadas aos custos das receitas cadastradas.</p><button type="button" className="outline-button" disabled={costBusy} onClick={consultCostOverview}>{costBusy ? 'Consultando…' : 'Consultar custos por produto'}</button></div>
           {costError && <div className="feedback feedback-error" role="alert">{costError}</div>}
-          {costRows.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th className="num">Vendido</th><th className="num">Vendas</th><th className="num">Custo técnico unitário</th><th className="num">Custo teórico × quantidade</th><th>Situação</th></tr></thead><tbody>
-            {costRows.map(row=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.productName}</td><td className="num">{row.quantitySold}</td><td className="num">{brl(row.salesCents)}</td><td className="num">{row.unitCostCents===null?'—':brl(Math.round(row.unitCostCents))}</td><td className="num">{row.totalTheoreticalCents===null?'—':brl(Math.round(row.totalTheoreticalCents))}</td><td>{row.status==='FICHA_PARCIAL_NAO_HOMOLOGADA'?'Ficha parcial, custo provisório':row.status==='SEM_CADASTRO'?'Sem cadastro':'Sem ficha ou custo'}</td></tr>)}
+          {costRows.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th className="num">Vendido</th><th className="num">Vendas</th><th className="num">Custo técnico unitário</th><th className="num">Custo teórico × quantidade</th><th>Preço tabela</th><th>CMV unitário provisório</th><th>Situação</th></tr></thead><tbody>
+            {costRows.map(row=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.productName}</td><td className="num">{row.quantitySold}</td><td className="num">{brl(row.salesCents)}</td><td className="num">{row.unitCostCents===null?'—':brl(Math.round(row.unitCostCents))}</td><td className="num">{row.totalTheoreticalCents===null?'—':brl(Math.round(row.totalTheoreticalCents))}</td><td>{row.salePriceCents===null?'—':brl(row.salePriceCents)}</td><td>{row.cmvPercent===null?'—':`${row.cmvPercent.toFixed(2)}%`}</td><td>{row.status==='FICHA_PARCIAL_NAO_HOMOLOGADA'?'Ficha parcial, custo provisório':row.status==='SEM_CADASTRO'?'Sem cadastro':'Sem ficha ou custo'}</td></tr>)}
           </tbody></table></div>}
           <p className="footnote">Esta prévia não totaliza CMV oficial enquanto houver fichas sem validação. O preço unitário de venda e o percentual de CMV ainda serão tratados separadamente.</p>
+        </section>
+        <section className="section-block" aria-labelledby="price-heading">
+          <div className="section-heading"><span className="step">09</span><div><h2 id="price-heading">Preço de venda por competência</h2><p>Preço de tabela unitário, separado das vendas reais importadas. Não substitui os valores conciliados.</p></div></div>
+          <div className="selectors">
+            <label>Código do produto<input value={salePriceCode} disabled={salePriceBusy} onChange={e=>setSalePriceCode(e.target.value)} /></label>
+            <label>Preço unitário (centavos)<input value={salePriceCents} inputMode="numeric" disabled={salePriceBusy} onChange={e=>setSalePriceCents(e.target.value)} placeholder="1840 = R$ 18,40"/></label>
+            <button type="button" className="primary-button" disabled={salePriceBusy||!salePriceCode.trim()||!salePriceCents.trim()} onClick={saveSalePrice}>Salvar preço</button>
+          </div>
+          {salePriceNotice && <div className="feedback feedback-info" role="status">{salePriceNotice}</div>}
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
