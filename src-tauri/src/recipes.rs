@@ -265,7 +265,7 @@ mod tests{
   db.execute("INSERT INTO recipe_lines(recipe_id,ingredient_id,quantity_base) SELECT rv.id,i.id,150 FROM recipe_versions rv JOIN ingredients i ON i.code='LEITE_TESTE'",[]).unwrap();
   approve_recipe(&mut db,"2026-09","LEGADO","Conferida em versao anterior").unwrap();
   assert!((recipe_cost(&db,"2026-09","LEGADO").unwrap().total_cost_cents-78.0).abs()<1e-9);
-  db.execute_batch("ALTER TABLE recipe_lines DROP COLUMN quantity_milli_base; PRAGMA user_version=11;").unwrap();
+  db.execute_batch("DROP TRIGGER IF EXISTS dre_source_no_update; DROP TRIGGER IF EXISTS dre_source_no_delete; DROP TRIGGER IF EXISTS dre_row_no_update; DROP TRIGGER IF EXISTS dre_row_no_delete; DROP TABLE dre_workbook_rows; DROP TABLE dre_workbook_sources; ALTER TABLE recipe_lines DROP COLUMN quantity_milli_base; PRAGMA user_version=11;").unwrap();
   drop(db);
   let mut migrated=database::open_database(&file).unwrap();
   let version:i64=migrated.pragma_query_value(None,"user_version",|r|r.get(0)).unwrap();
