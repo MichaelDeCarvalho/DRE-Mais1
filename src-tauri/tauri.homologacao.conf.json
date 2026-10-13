@@ -1,0 +1,13 @@
+{
+  "productName": "DRE Mais1 Homologacao",
+  "identifier": "br.com.dremais1.homologacao",
+  "app": {
+    "windows": [{
+      "title": "DRE Mais1 — HOMOLOGACAO (banco separado)",
+      "width": 1180,
+      "height": 830,
+      "minWidth": 800,
+      "minHeight": 630
+    }]
+  }
+}
