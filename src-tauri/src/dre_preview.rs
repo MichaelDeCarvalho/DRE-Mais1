@@ -27,8 +27,8 @@ pub struct DrePreview {
 pub fn preview(db:&Connection,period:&str)->Result<DrePreview,String>{
  let sales=database::load_period_summary(db,period)?;
  let registered=expenses::list(db,period)?;
- let royalties=financial_rules::royalties_cents(sales.products_total_cents)?;
- let fees=financial_rules::calculate_fees(&sales.payment_methods)?;
+ let royalties=financial_rules::configured_royalties(db,period,sales.products_total_cents)?;
+ let fees=financial_rules::calculate_configured_fees(db,period,&sales.payment_methods)?;
  let mut variable=0_i64;let mut fixed=0_i64;let mut tax=0_i64;
  for x in &registered {let bucket=match x.expense_kind.as_str(){"VARIAVEL"=>&mut variable,"FIXA"=>&mut fixed,"TRIBUTO"=>&mut tax,_=>return Err("Tipo de despesa desconhecido".into())};*bucket=bucket.checked_add(x.amount_cents).ok_or("Total de despesas excedeu limite")?;}
  let coverage=recipes::monthly_cmv_summary(db,period)?;
