@@ -51,6 +51,12 @@ export function App() {
   const [paramNote,setParamNote] = useState('');
   const [paramMessage,setParamMessage] = useState('');
   const [paramBusy,setParamBusy] = useState(false);
+  function editNextVersion(p:FinancialParameter){
+    setParamCode(p.code);setParamName(p.name);setParamCategory(p.category);setParamBase(p.calculationBase);
+    setParamRate(p.basisPoints===null?'':(p.basisPoints/100).toFixed(2).replace('.',','));
+    setParamSource('Confirmação do operador');setParamNote('');
+    setParamMessage('Dados preenchidos. Selecione a competência de início no topo da página e informe o novo percentual. Não altere competências já cadastradas.');
+  }
   async function loadParameters(period:string){
     try { setParameters(await invoke<FinancialParameter[]>('list_financial_parameters',{period}));setParamMessage(''); }
     catch(e){setParamMessage(explainError(e));}
@@ -505,7 +511,7 @@ export function App() {
         <section className="section-block" aria-labelledby="parameters-heading">
           <div className="section-heading"><span className="step">%</span><div><h2 id="parameters-heading">Configurações · Parâmetros financeiros</h2><p>Taxas editáveis por competência. Alterações futuras não sobrescrevem versões anteriores.</p></div></div>
           <div className="action-line"><p>Referência: {periodLabel(period)}. Percentuais são parâmetros, não despesas automaticamente contabilizadas.</p><button type="button" className="outline-button" disabled={paramBusy} onClick={()=>loadParameters(period)}>Consultar parâmetros</button></div>
-          {parameters.length>0&&<div className="scroll-table"><table><thead><tr><th>Regra</th><th>Categoria</th><th>Base</th><th>Vigência</th><th>Percentual</th></tr></thead><tbody>{parameters.map(p=><tr key={p.code}><td>{p.name} ({p.code})</td><td>{p.category}</td><td>{p.calculationBase}</td><td>{p.effectiveFrom||'Não vigente'}</td><td>{p.basisPoints===null?'Pendente':(p.basisPoints/100).toFixed(2)+'%'}</td></tr>)}</tbody></table></div>}
+          {parameters.length>0&&<div className="scroll-table"><table><thead><tr><th>Regra</th><th>Categoria</th><th>Base</th><th>Vigência</th><th>Percentual</th><th>Ação</th></tr></thead><tbody>{parameters.map(p=><tr key={p.code}><td>{p.name} ({p.code})</td><td>{p.category}</td><td>{p.calculationBase}</td><td>{p.effectiveFrom||'Não vigente'}</td><td>{p.basisPoints===null?'Pendente':(p.basisPoints/100).toFixed(2)+'%'}</td><td><button type="button" className="outline-button" onClick={()=>editNextVersion(p)}>Nova vigência</button></td></tr>)}</tbody></table></div>}
           <div className="selectors">
             <label>Código único<input value={paramCode} maxLength={64} onChange={e=>setParamCode(e.target.value.toUpperCase())} placeholder="EX.: CREDITO" /></label>
             <label>Descrição<input value={paramName} maxLength={120} onChange={e=>setParamName(e.target.value)} placeholder="Ex.: Cartão crédito" /></label>
