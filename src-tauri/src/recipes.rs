@@ -84,13 +84,36 @@ pub fn monthly_cost_overview(db:&Connection,period:&str)->Result<Vec<ProductCost
    Ok(detail)=>{
     let total=detail.total_cost_cents*qty as f64;
     if !total.is_finite(){return Err("CMV teorico excedeu limite".into());}
-    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:"FICHA_PARCIAL_NAO_HOMOLOGADA".into(),sale_price_cents:price,cmv_percent:price.map(|p|100.0*detail.total_cost_cents/p as f64)});
+    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:if is_approved(db,period,&code)?{"FICHA_APROVADA".into()}else{"FICHA_PARCIAL_NAO_HOMOLOGADA".into()},sale_price_cents:price,cmv_percent:price.map(|p|100.0*detail.total_cost_cents/p as f64)});
    },
    Err(_)=>out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_FICHA_OU_CUSTO".into(),sale_price_cents:price,cmv_percent:None}),
   }
  }
  if out.is_empty(){return Err("Nenhuma venda importada para a competencia.".into());}
  Ok(out)
+}
+pub fn approve_recipe(db:&mut Connection,period:&str,code:&str,note:&str)->Result<(),String>{
+ if !valid_period(period)||code.trim().is_empty()||note.trim().is_empty()||note.len()>500 {
+  return Err("Informe competencia, codigo e justificativa de conferencia (ate 500 caracteres).".into());
+ }
+ let detail=recipe_detail(db,period,code)?;
+ if detail.lines.is_empty()||!detail.total_cost_cents.is_finite() {
+  return Err("Ficha sem ingredientes ou custo valido.".into());
+ }
+ let tx=db.transaction().map_err(|e|e.to_string())?;
+ let changed=tx.execute("UPDATE recipe_versions SET approved_at=CURRENT_TIMESTAMP,approved_note=?1
+ WHERE period=?2 AND product_id=(SELECT product_id FROM product_external_codes WHERE store_id=1 AND external_code=?3)
+ AND approved_at IS NULL",
+ params![note.trim(),period,code]).map_err(|e|e.to_string())?;
+ if changed!=1{return Err("Ficha inexistente ou ja aprovada; nenhuma alteracao realizada.".into());}
+ tx.commit().map_err(|e|e.to_string())
+}
+pub fn is_approved(db:&Connection,period:&str,code:&str)->Result<bool,String>{
+ let found:Option<String>=db.query_row("SELECT rv.approved_at FROM recipe_versions rv
+ JOIN product_external_codes pc ON pc.product_id=rv.product_id AND pc.store_id=1
+ WHERE rv.period=?1 AND pc.external_code=?2",params![period,code],|r|r.get(0))
+ .optional().map_err(|e|e.to_string())?;
+ Ok(found.is_some())
 }
 fn valid_period(p:&str)->bool {
  let v=p.split('-').collect::<Vec<_>>();
@@ -172,6 +195,10 @@ mod tests{
   assert_eq!(detail.lines[0].purchase_total_cents,520);
   assert!((detail.total_cost_cents-78.0).abs()<1e-9);
   assert!(set_line(&mut db,"2026-09","1234","LEITE",150).is_err());
+  assert!(!is_approved(&db,"2026-09","1234").unwrap());
+  approve_recipe(&mut db,"2026-09","1234","Conferida quantidade e embalagem").unwrap();
+  assert!(is_approved(&db,"2026-09","1234").unwrap());
+  assert!(approve_recipe(&mut db,"2026-09","1234","Duplo aceite").is_err());
   assert!(recipe_cost(&db,"2026-10","1234").is_err());
   assert!((recipe_cost(&db,"2026-09","1234").unwrap().total_cost_cents-78.0).abs()<1e-9);
  }
