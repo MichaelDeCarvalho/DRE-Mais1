@@ -69,6 +69,6 @@ mod tests{
   assert!(view.contribution_before_other_expenses_cents.is_none());
   assert_eq!(view.status,"CMV_INCOMPLETO");
   assert_eq!(view.recorded_expense_count,0);
-  assert_eq!(view.estimated_royalties_cents,174612);
+  assert_eq!(view.estimated_royalties_cents,Some(174612));
  }
 }
