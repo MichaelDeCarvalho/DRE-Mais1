@@ -35,6 +35,10 @@ export function App() {
   const [recipeError, setRecipeError] = useState('');
   const [recipeCost, setRecipeCost] = useState<{ productCode:string; period:string; totalCostCents:number; ingredientCount:number } | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
+  const [costRows,setCostRows] = useState<Array<{productCode:string;productName:string;quantitySold:number;salesCents:number;unitCostCents:number|null;totalTheoreticalCents:number|null;status:string}>>([]);
+  const [costBusy,setCostBusy] = useState(false);
+  const [costError,setCostError] = useState('');
+
   const [recipeDetail, setRecipeDetail] = useState<{
     productCode:string;productName:string;period:string;totalCostCents:number;
     lines:Array<{ingredientCode:string;ingredientName:string;unit:string;quantityUsed:number;quantityPurchased:number;purchaseTotalCents:number;costUsedCents:number}>
@@ -185,6 +189,13 @@ export function App() {
     }catch(e){setRecipeError(explainError(e));}
     finally{setRecipeBusy(false);}
   }
+  async function consultCostOverview(){
+    if(costBusy)return;
+    setCostBusy(true);setCostError('');setCostRows([]);
+    try{setCostRows(await invoke<typeof costRows>('monthly_cost_overview',{period}));}
+    catch(e){setCostError(explainError(e));}
+    finally{setCostBusy(false);}
+  }
   async function submit() {
     if (!productsPath || !paymentsPath || !canSubmit) return;
     setPending(true); setError(null); setResult(null); setEditingCode(null); setFilter('');
@@ -300,6 +311,15 @@ export function App() {
             <p><strong>Custo unitário teórico: {brl(Math.round(recipeDetail.totalCostCents))}</strong>. Cálculo interno preserva frações de centavo até o total.</p>
           </div>}
           {recipeCost && <div className="feedback feedback-info" role="status"><strong>Ficha do produto {recipeCost.productCode}: {recipeCost.ingredientCount} insumo(s).</strong><p>Custo teórico unitário: {brl(Math.round(recipeCost.totalCostCents))}. Valor interno antes do arredondamento: {recipeCost.totalCostCents.toFixed(4)} centavos.</p></div>}
+        </section>
+        <section className="section-block" aria-labelledby="cmv-preview-heading">
+          <div className="section-heading"><span className="step">08</span><div><h2 id="cmv-preview-heading">Prévia de custos teóricos mensais</h2><p>Somente diagnóstico: fichas parciais não representam CMV homologado nem fechamento DRE.</p></div></div>
+          <div className="action-line"><p>Vendas por código e competência, relacionadas aos custos das receitas cadastradas.</p><button type="button" className="outline-button" disabled={costBusy} onClick={consultCostOverview}>{costBusy ? 'Consultando…' : 'Consultar custos por produto'}</button></div>
+          {costError && <div className="feedback feedback-error" role="alert">{costError}</div>}
+          {costRows.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th className="num">Vendido</th><th className="num">Vendas</th><th className="num">Custo técnico unitário</th><th className="num">Custo teórico × quantidade</th><th>Situação</th></tr></thead><tbody>
+            {costRows.map(row=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.productName}</td><td className="num">{row.quantitySold}</td><td className="num">{brl(row.salesCents)}</td><td className="num">{row.unitCostCents===null?'—':brl(Math.round(row.unitCostCents))}</td><td className="num">{row.totalTheoreticalCents===null?'—':brl(Math.round(row.totalTheoreticalCents))}</td><td>{row.status==='FICHA_PARCIAL_NAO_HOMOLOGADA'?'Ficha parcial, custo provisório':row.status==='SEM_CADASTRO'?'Sem cadastro':'Sem ficha ou custo'}</td></tr>)}
+          </tbody></table></div>}
+          <p className="footnote">Esta prévia não totaliza CMV oficial enquanto houver fichas sem validação. O preço unitário de venda e o percentual de CMV ainda serão tratados separadamente.</p>
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
