@@ -81,8 +81,13 @@ jobs:
           python tools/verify_persistence_contract.py
           python tools/verify_catalog_status_contract.py
 
-      - name: Compilar Tauri sem instalador
+      - name: Compilar Tauri principal sem instalador
+        if: runner.os == 'Linux'
         run: npm run tauri -- build --no-bundle --ci
+
+      - name: Compilar homologacao Windows com banco isolado
+        if: runner.os == 'Windows'
+        run: npm run tauri -- build --no-bundle --ci --config src-tauri/tauri.homologacao.conf.json
 
       # Runner automatizado nao equivale a desktop interativo: diagnostico nao bloqueante.
       - name: Diagnostico inicializacao Windows (nao homologacao GUI)
@@ -106,7 +111,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: dre-mais1-windows-sem-homologacao-gui
+          name: dre-mais1-windows-homologacao-isolada
           path: src-tauri/target/release/dre-mais1.exe
           if-no-files-found: error
           retention-days: 7
