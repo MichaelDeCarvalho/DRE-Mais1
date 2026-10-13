@@ -44,9 +44,18 @@ export function App() {
   const [salePriceBusy,setSalePriceBusy] = useState(false);
   const [salePriceNotice,setSalePriceNotice] = useState('');
   const [costError,setCostError] = useState('');
+  const [expenseKind,setExpenseKind] = useState('FIXA');
+  const [expenseCategory,setExpenseCategory] = useState('');
+  const [expenseDescription,setExpenseDescription] = useState('');
+  const [expenseAmount,setExpenseAmount] = useState('');
+  const [expenseReference,setExpenseReference] = useState('');
+  const [expenseBusy,setExpenseBusy] = useState(false);
+  const [expenseError,setExpenseError] = useState('');
+  const [expenseNotice,setExpenseNotice] = useState('');
+  const [expenseRows,setExpenseRows] = useState<Array<{id:number;period:string;expenseKind:string;category:string;description:string;amountCents:number;reference:string}>>([]);
   const [dreBusy,setDreBusy] = useState(false);
   const [dreError,setDreError] = useState('');
-  const [drePreview,setDrePreview] = useState<{period:string;revenueCents:number;paymentsCents:number;differenceCents:number;reconciled:boolean;approvedCmvCents:number|null;contributionBeforeOtherExpensesCents:number|null;pendingProductCodes:number;approvedProductCodes:number;status:string;unregisteredComponents:string[]} | null>(null);
+  const [drePreview,setDrePreview] = useState<{period:string;revenueCents:number;paymentsCents:number;differenceCents:number;reconciled:boolean;approvedCmvCents:number|null;contributionBeforeOtherExpensesCents:number|null;pendingProductCodes:number;approvedProductCodes:number;status:string;unregisteredComponents:string[];recordedVariableCents:number;recordedFixedCents:number;recordedTaxCents:number;recordedExpenseCount:number} | null>(null);
   const [cmvSummary,setCmvSummary] = useState<{period:string;productCodes:number;approvedCodes:number;pendingCodes:number;approvedQuantity:number;approvedCostCents:number;complete:boolean} | null>(null);
 
   const [recipeDetail, setRecipeDetail] = useState<{
@@ -220,6 +229,26 @@ export function App() {
     }catch(e){setSalePriceNotice(explainError(e));}
     finally{setSalePriceBusy(false);}
   }
+  async function consultExpenses() {
+    if(expenseBusy)return;
+    setExpenseBusy(true);setExpenseError('');
+    try{setExpenseRows(await invoke<typeof expenseRows>('list_expenses',{period}));}
+    catch(e){setExpenseError(explainError(e));}
+    finally{setExpenseBusy(false);}
+  }
+  async function saveExpense() {
+    if(expenseBusy)return;
+    setExpenseBusy(true);setExpenseError('');setExpenseNotice('');
+    try {
+      if(!/^\d+$/.test(expenseAmount)||!Number.isSafeInteger(Number(expenseAmount)))throw new Error('Informe o valor em centavos inteiros não negativos.');
+      await invoke('register_expense',{period,expenseKind,category:expenseCategory,description:expenseDescription,amountCents:Number(expenseAmount),reference:expenseReference});
+      setExpenseNotice('Lançamento salvo nesta competência; confira sua classificação.');
+      setExpenseCategory('');setExpenseDescription('');setExpenseAmount('');setExpenseReference('');
+      setExpenseRows(await invoke<typeof expenseRows>('list_expenses',{period}));
+      setDrePreview(null);
+    } catch(e){setExpenseError(explainError(e));}
+    finally{setExpenseBusy(false);}
+  }
   async function consultDrePreview(){
     if(dreBusy)return;
     setDreBusy(true);setDreError('');setDrePreview(null);
@@ -390,8 +419,25 @@ export function App() {
             <p>Fichas aprovadas: {drePreview.approvedProductCodes} · Pendentes: {drePreview.pendingProductCodes}.</p>
             <p>CMV técnico aprovado para a competência: {drePreview.approvedCmvCents===null?'Não disponível — cobertura incompleta':brl(Math.round(drePreview.approvedCmvCents))}.</p>
             <p>Receita menos CMV técnico (antes de outras despesas): {drePreview.contributionBeforeOtherExpensesCents===null?'Não disponível':brl(Math.round(drePreview.contributionBeforeOtherExpensesCents))}.</p>
+            <p>Despesas registradas ({drePreview.recordedExpenseCount} lançamentos): variáveis {brl(drePreview.recordedVariableCents)}, fixas {brl(drePreview.recordedFixedCents)}, tributos {brl(drePreview.recordedTaxCents)}. Valores ainda não homologados como completos.</p>
             <p>Componentes ainda sem apuração: {drePreview.unregisteredComponents.join('; ')}. Nenhum resultado líquido ou lucro é calculado nesta prévia.</p>
           </div>}
+        </section>
+        <section className="section-block" aria-labelledby="expense-heading">
+          <div className="section-heading"><span className="step">11</span><div><h2 id="expense-heading">Despesas por competência</h2><p>Lançamentos reais e identificados por categoria. Nenhuma alíquota tributária é presumida.</p></div></div>
+          <div className="selectors">
+            <label>Tipo<select value={expenseKind} disabled={expenseBusy} onChange={e=>setExpenseKind(e.target.value)}><option value="FIXA">Despesa fixa</option><option value="VARIAVEL">Despesa variável</option><option value="TRIBUTO">Tributo informado</option></select></label>
+            <label>Categoria<input maxLength={120} value={expenseCategory} disabled={expenseBusy} onChange={e=>setExpenseCategory(e.target.value)} placeholder="Ex.: Aluguel" /></label>
+            <label>Descrição<input maxLength={200} value={expenseDescription} disabled={expenseBusy} onChange={e=>setExpenseDescription(e.target.value)} /></label>
+            <label>Valor em centavos<input inputMode="numeric" value={expenseAmount} disabled={expenseBusy} onChange={e=>setExpenseAmount(e.target.value)} placeholder="250000 = R$ 2.500,00" /></label>
+            <label>Referência documental<input maxLength={200} value={expenseReference} disabled={expenseBusy} onChange={e=>setExpenseReference(e.target.value)} placeholder="Ex.: recibo 123" /></label>
+            <button type="button" className="primary-button" disabled={expenseBusy||!expenseCategory.trim()||!expenseDescription.trim()||!expenseAmount.trim()} onClick={saveExpense}>Registrar despesa</button>
+            <button type="button" className="outline-button" disabled={expenseBusy} onClick={consultExpenses}>Consultar lançamentos</button>
+          </div>
+          {expenseError && <div className="feedback feedback-error" role="alert">{expenseError}</div>}
+          {expenseNotice && <div className="feedback feedback-info" role="status">{expenseNotice}</div>}
+          {expenseRows.length>0 && <div className="scroll-table"><table><thead><tr><th>Tipo</th><th>Categoria</th><th>Descrição</th><th>Documento</th><th className="num">Valor</th></tr></thead><tbody>{expenseRows.map(row=><tr key={row.id}><td>{row.expenseKind}</td><td>{row.category}</td><td>{row.description}</td><td>{row.reference||'Não informado'}</td><td className="num">{brl(row.amountCents)}</td></tr>)}</tbody></table></div>}
+          <p className="footnote">Os valores lançados representam apenas despesas registradas. É necessária conferência de completude antes do fechamento da DRE.</p>
         </section>
         <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
       </main>
