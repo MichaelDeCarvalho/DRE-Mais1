@@ -490,7 +490,7 @@ export function App() {
           {[
             ['period-heading','Competência'],['catalog-heading','Catálogo'],['ingredient-heading','Insumos'],['recipe-heading','Fichas técnicas'],
             ['cmv-preview-heading','CMV'],['price-heading','Preços de venda'],['expense-heading','Despesas'],['dre-preview-heading','Prévia da DRE'],
-            ['parameters-heading','Parâmetros financeiros'],['appearance-heading','Aparência'],
+            ['parameters-heading','Parâmetros financeiros'],['validated-dre-heading','DRE da planilha'],['appearance-heading','Aparência'],
           ].map(([id,label]) => <button key={id} type="button" className={activeSection === id ? 'nav-link nav-active' : 'nav-link'} onClick={() => navigate(id)}>{label}</button>)}
         </nav>
         <div className="sidebar-bottom"><span className="status-dot" /> Dados armazenados localmente <small>DRE em validação · Sem fechamento definitivo</small></div>
