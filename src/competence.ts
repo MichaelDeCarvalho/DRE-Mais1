@@ -15,8 +15,7 @@ export async function consultPeriodModules(
   run: (command: PeriodCommand, args: { period: string }) => Promise<unknown>,
 ): Promise<Record<PeriodCommand, PromiseSettledResult<unknown>>> {
   const settled = await Promise.allSettled(PERIOD_COMMANDS.map(command => run(command, { period })));
-  return Object.fromEntries(PERIOD_COMMANDS.map((command, i) => [command, settled[i]]))
-    as Record<PeriodCommand, PromiseSettledResult<unknown>>;
+  return Object.fromEntries(PERIOD_COMMANDS.map((command, i) => [command, settled[i]])) as Record<PeriodCommand, PromiseSettledResult<unknown>>;
 }
 
 /** Avanca a vigencia sem alterar a competencia global selecionada. */
