@@ -109,11 +109,11 @@ pub fn approve_recipe(db:&mut Connection,period:&str,code:&str,note:&str)->Resul
  tx.commit().map_err(|e|e.to_string())
 }
 pub fn is_approved(db:&Connection,period:&str,code:&str)->Result<bool,String>{
- let found:Option<String>=db.query_row("SELECT rv.approved_at FROM recipe_versions rv
+ let found:Option<Option<String>>=db.query_row("SELECT rv.approved_at FROM recipe_versions rv
  JOIN product_external_codes pc ON pc.product_id=rv.product_id AND pc.store_id=1
  WHERE rv.period=?1 AND pc.external_code=?2",params![period,code],|r|r.get(0))
  .optional().map_err(|e|e.to_string())?;
- Ok(found.is_some())
+ Ok(found.flatten().is_some())
 }
 fn valid_period(p:&str)->bool {
  let v=p.split('-').collect::<Vec<_>>();
