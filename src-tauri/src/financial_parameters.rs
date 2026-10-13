@@ -55,5 +55,10 @@ mod tests {
  assert!(db.execute("UPDATE financial_rule_versions SET basis_points=999 WHERE effective_from='2026-09'",[]).is_err());
  assert!(db.execute("DELETE FROM financial_rule_versions",[]).is_err());
  assert!(register(&mut db,"ERRADO","Erro","PAYMENT_FEE","PAYMENT_METHOD","2026-13",100,"operador","").is_err());
+ let db_file=t.path().join("parameters.sqlite");
+ drop(db);
+ let reopened=database::open_database(&db_file).unwrap();
+ assert_eq!(list(&reopened,"2026-10").unwrap().into_iter().find(|x|x.code=="CREDITO").unwrap().basis_points,Some(200));
+ assert_eq!(list(&reopened,"2026-11").unwrap().into_iter().find(|x|x.code=="CREDITO").unwrap().basis_points,Some(250));
  }
 }
