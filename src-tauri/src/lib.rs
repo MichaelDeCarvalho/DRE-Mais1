@@ -3,6 +3,7 @@ mod database;
 mod importer;
 mod ingredients;
 mod recipes;
+mod sale_prices;
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Mutex};
@@ -141,6 +142,23 @@ async fn monthly_cost_overview(app:tauri::AppHandle,period:String)->Result<Vec<r
  }).await.map_err(|e|e.to_string())?
 }
 
+#[tauri::command]
+async fn register_sale_price(app:tauri::AppHandle,period:String,product_code:String,price_cents:i64)->Result<sale_prices::SalePrice,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let mut db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  sale_prices::register(&mut db,&period,&product_code,price_cents)
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+async fn get_sale_price(app:tauri::AppHandle,period:String,product_code:String)->Result<Option<sale_prices::SalePrice>,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let db=state.db.lock().map_err(|_|"Banco indisponivel".to_string())?;
+  sale_prices::get(&db,&period,&product_code)
+ }).await.map_err(|e|e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -153,7 +171,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
