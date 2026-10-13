@@ -7,6 +7,7 @@ mod sale_prices;
 mod dre_preview;
 mod expenses;
 mod financial_rules;
+mod financial_parameters;
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Mutex};
@@ -206,6 +207,22 @@ async fn list_expenses(app:tauri::AppHandle,period:String)->Result<Vec<expenses:
  }).await.map_err(|e|e.to_string())?
 }
 
+#[tauri::command]
+async fn list_financial_parameters(app:tauri::AppHandle,period:String)->Result<Vec<financial_parameters::FinancialRule>,String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let db=state.db.lock().map_err(|_|"Banco temporariamente indisponível".to_string())?;
+  financial_parameters::list(&db,&period)
+ }).await.map_err(|e|e.to_string())?
+}
+#[tauri::command]
+async fn register_financial_parameter(app:tauri::AppHandle,code:String,name:String,category:String,base:String,period:String,basis_points:i64,source:String,note:String)->Result<(),String>{
+ tauri::async_runtime::spawn_blocking(move||{
+  let state=app.state::<AppState>();
+  let mut db=state.db.lock().map_err(|_|"Banco temporariamente indisponível".to_string())?;
+  financial_parameters::register(&mut db,&code,&name,&category,&base,&period,basis_points,&source,&note)
+ }).await.map_err(|e|e.to_string())?
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -218,7 +235,7 @@ pub fn run() {
             app.manage(AppState { db: Mutex::new(db) });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price, approve_recipe, monthly_cmv_summary, get_dre_preview, register_expense, list_expenses])
+        .invoke_handler(tauri::generate_handler![import_reports, import_legacy_catalog, get_catalog_status, review_mappings, load_period_summary, register_sold_product, register_ingredient, list_ingredients, import_ingredients_excel, set_recipe_line, get_recipe_cost, get_recipe_detail, monthly_cost_overview, register_sale_price, get_sale_price, approve_recipe, monthly_cmv_summary, get_dre_preview, register_expense, list_expenses, list_financial_parameters, register_financial_parameter])
         .run(tauri::generate_context!())
         .expect("Falha ao iniciar DRE Mais1");
 }
