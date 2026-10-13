@@ -6,7 +6,7 @@ pub fn open_database(path: &std::path::Path) -> Result<Connection, String> {
     let mut db = Connection::open(path).map_err(|e| format!("Não foi possível abrir SQLite: {e}"))?;
     db.pragma_update(None, "foreign_keys", "ON").map_err(|e| e.to_string())?;
     let version: i64 = db.pragma_query_value(None, "user_version", |row| row.get(0)).map_err(|e| e.to_string())?;
-    if version > 9 { return Err(format!("Banco de dados versão {version} é mais recente que esta aplicação.")); }
+    if version > 10 { return Err(format!("Banco de dados versão {version} é mais recente que esta aplicação.")); }
     if version == 0 {
         let tx = db.transaction().map_err(|e| e.to_string())?;
         tx.execute_batch(include_str!("../migrations/0001_init.sql")).map_err(|e| format!("Migration 0001 falhou: {e}"))?;
@@ -66,6 +66,12 @@ pub fn open_database(path: &std::path::Path) -> Result<Connection, String> {
         let tx=db.transaction().map_err(|e|e.to_string())?;
         tx.execute_batch(include_str!("../migrations/0009_expenses.sql")).map_err(|e|format!("Migration 0009 falhou: {e}"))?;
         tx.pragma_update(None,"user_version",9).map_err(|e|e.to_string())?;
+        tx.commit().map_err(|e|e.to_string())?;
+    }
+    if version < 10 {
+        let tx=db.transaction().map_err(|e|e.to_string())?;
+        tx.execute_batch(include_str!("../migrations/0010_financial_parameters.sql")).map_err(|e|format!("Migration 0010 falhou: {e}"))?;
+        tx.pragma_update(None,"user_version",10).map_err(|e|e.to_string())?;
         tx.commit().map_err(|e|e.to_string())?;
     }
     Ok(db)
