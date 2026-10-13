@@ -12,7 +12,7 @@ pub struct RecipeCost {
 #[serde(rename_all="camelCase")]
 pub struct RecipeLineDetail {
  pub ingredient_code:String,pub ingredient_name:String,pub unit:String,
- pub quantity_used:i64,pub quantity_purchased:i64,
+ pub quantity_used:f64,pub quantity_purchased:i64,
  pub purchase_total_cents:i64,pub cost_used_cents:f64,
 }
 #[derive(Debug,Serialize)]
@@ -25,7 +25,7 @@ pub fn recipe_detail(db:&Connection,period:&str,product_code:&str)->Result<Recip
  if !valid_period(period)||product_code.trim().is_empty(){return Err("Competencia ou codigo invalido.".into());}
  let name:String=db.query_row("SELECT p.display_name FROM products p JOIN product_external_codes pc ON pc.product_id=p.id WHERE pc.store_id=1 AND pc.external_code=?1",
  [product_code],|r|r.get(0)).optional().map_err(|e|e.to_string())?.ok_or("Codigo do produto nao cadastrado")?;
- let mut stmt=db.prepare("SELECT i.code,i.name,i.base_unit,l.quantity_base,c.quantity_base,c.purchase_cents,c.freight_cents,c.st_cents
+ let mut stmt=db.prepare("SELECT i.code,i.name,i.base_unit,l.quantity_base,l.quantity_milli_base,c.quantity_base,c.purchase_cents,c.freight_cents,c.st_cents
  FROM recipe_lines l JOIN recipe_versions rv ON rv.id=l.recipe_id
  JOIN product_external_codes pc ON pc.product_id=rv.product_id AND pc.store_id=1
  JOIN ingredients i ON i.id=l.ingredient_id AND i.store_id=1
@@ -33,21 +33,22 @@ pub fn recipe_detail(db:&Connection,period:&str,product_code:&str)->Result<Recip
  WHERE rv.period=?1 AND pc.external_code=?2 ORDER BY i.code").map_err(|e|e.to_string())?;
  let rows=stmt.query_map(params![period,product_code],|r|Ok((
  r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,
- r.get::<_,i64>(3)?,r.get::<_,Option<i64>>(4)?,
- r.get::<_,Option<i64>>(5)?,r.get::<_,Option<i64>>(6)?,r.get::<_,Option<i64>>(7)?)))
+ r.get::<_,i64>(3)?,r.get::<_,i64>(4)?,r.get::<_,Option<i64>>(5)?,
+ r.get::<_,Option<i64>>(6)?,r.get::<_,Option<i64>>(7)?,r.get::<_,Option<i64>>(8)?)))
  .map_err(|e|e.to_string())?;
  let mut lines=Vec::new();let mut total=0.0f64;
  for row in rows {
-  let (code,name,unit,used,bought,price,freight,st)=row.map_err(|e|e.to_string())?;
+  let (code,name,unit,legacy_qty,milli_qty,bought,price,freight,st)=row.map_err(|e|e.to_string())?;
+  let used=effective_milli(legacy_qty,milli_qty)?;
   let bought=bought.ok_or(format!("Insumo {code} sem custo na competencia"))?;
   let price=price.ok_or("Preco ausente")?;let freight=freight.ok_or("Frete ausente")?;let st=st.ok_or("ST ausente")?;
   let sum=price.checked_add(freight).and_then(|v|v.checked_add(st)).ok_or("Custo fora do limite")?;
   if bought<=0||used<=0{return Err(format!("Quantidade invalida do insumo {code}"));}
-  let cost=used as f64*sum as f64/bought as f64;
+  let cost=used as f64*sum as f64/(bought as f64*1000.0);
   if !cost.is_finite(){return Err("Custo calculado invalido".into());}
   total+=cost;
   if !total.is_finite(){return Err("Total da receita excedeu limite".into());}
-  lines.push(RecipeLineDetail{ingredient_code:code,ingredient_name:name,unit,quantity_used:used,quantity_purchased:bought,purchase_total_cents:sum,cost_used_cents:cost});
+  lines.push(RecipeLineDetail{ingredient_code:code,ingredient_name:name,unit,quantity_used:used as f64/1000.0,quantity_purchased:bought,purchase_total_cents:sum,cost_used_cents:cost});
  }
  if lines.is_empty(){return Err("Ficha tecnica nao cadastrada para produto e competencia.".into());}
  Ok(RecipeDetail{product_code:product_code.into(),product_name:name,period:period.into(),lines,total_cost_cents:total})
@@ -143,8 +144,17 @@ fn valid_period(p:&str)->bool {
  v.len()==2 && v[0].len()==4 && v[0].chars().all(|c|c.is_ascii_digit())
  && v[1].len()==2 && v[1].parse::<u8>().map(|m|(1..=12).contains(&m)).unwrap_or(false)
 }
+fn effective_milli(legacy_qty:i64,milli_qty:i64)->Result<i64,String>{
+ if milli_qty>0 {return Ok(milli_qty);}
+ if legacy_qty<=0 {return Err("Quantidade consumida invalida".into());}
+ legacy_qty.checked_mul(1000).ok_or("Quantidade consumida excedeu limite".into())
+}
 pub fn set_line(db:&mut Connection,period:&str,product_code:&str,ingredient_code:&str,qty:i64)->Result<RecipeCost,String>{
- if !valid_period(period)||product_code.trim().is_empty()||ingredient_code.trim().is_empty()||qty<=0 {
+ let qty_milli=qty.checked_mul(1000).ok_or("Quantidade consumida excedeu limite")?;
+ set_line_milli(db,period,product_code,ingredient_code,qty_milli)
+}
+pub fn set_line_milli(db:&mut Connection,period:&str,product_code:&str,ingredient_code:&str,qty_milli:i64)->Result<RecipeCost,String>{
+ if !valid_period(period)||product_code.trim().is_empty()||ingredient_code.trim().is_empty()||qty_milli<=0 {
   return Err("Informe competencia valida, codigos e quantidade consumida positiva na unidade basica.".into());
  }
  let tx=db.transaction().map_err(|e|e.to_string())?;
@@ -159,29 +169,31 @@ pub fn set_line(db:&mut Connection,period:&str,product_code:&str,ingredient_code
  params![product_id,period]).map_err(|e|e.to_string())?;
  let recipe_id:i64=tx.query_row("SELECT id FROM recipe_versions WHERE product_id=?1 AND period=?2",
  params![product_id,period],|r|r.get(0)).map_err(|e|e.to_string())?;
- tx.execute("INSERT INTO recipe_lines(recipe_id,ingredient_id,quantity_base) VALUES(?1,?2,?3)",
- params![recipe_id,ingredient_id,qty]).map_err(|_|"Insumo ja registrado nessa ficha; sobrescrita bloqueada.".to_string())?;
+ let legacy_quantity=qty_milli/1000 + i64::from(qty_milli%1000 != 0);
+ tx.execute("INSERT INTO recipe_lines(recipe_id,ingredient_id,quantity_base,quantity_milli_base) VALUES(?1,?2,?3,?4)",
+ params![recipe_id,ingredient_id,legacy_quantity,qty_milli]).map_err(|_|"Insumo ja registrado nessa ficha; sobrescrita bloqueada.".to_string())?;
  tx.commit().map_err(|e|e.to_string())?;
  recipe_cost(db,period,product_code)
 }
 pub fn recipe_cost(db:&Connection,period:&str,product_code:&str)->Result<RecipeCost,String>{
  if !valid_period(period){return Err("Competencia invalida.".into());}
- let mut st=db.prepare("SELECT l.quantity_base,c.quantity_base,c.purchase_cents,c.freight_cents,c.st_cents FROM recipe_lines l
+ let mut st=db.prepare("SELECT l.quantity_base,l.quantity_milli_base,c.quantity_base,c.purchase_cents,c.freight_cents,c.st_cents FROM recipe_lines l
  JOIN recipe_versions rv ON rv.id=l.recipe_id
  JOIN products p ON p.id=rv.product_id
  JOIN product_external_codes pc ON pc.product_id=p.id AND pc.store_id=1
  LEFT JOIN ingredient_purchase_costs c ON c.ingredient_id=l.ingredient_id AND c.period=rv.period
  WHERE rv.period=?1 AND pc.external_code=?2").map_err(|e|e.to_string())?;
- let lines=st.query_map(params![period,product_code],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,Option<i64>>(2)?,r.get::<_,Option<i64>>(3)?,r.get::<_,Option<i64>>(4)?)))
+ let lines=st.query_map(params![period,product_code],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,Option<i64>>(2)?,r.get::<_,Option<i64>>(3)?,r.get::<_,Option<i64>>(4)?,r.get::<_,Option<i64>>(5)?)))
  .map_err(|e|e.to_string())?;
  let mut count=0usize;let mut total=0.0f64;
  for line in lines {
-  let (use_qty,buy_qty,price,freight,st)=line.map_err(|e|e.to_string())?;
+  let (legacy_qty,milli_qty,buy_qty,price,freight,st)=line.map_err(|e|e.to_string())?;
+  let use_qty=effective_milli(legacy_qty,milli_qty)?;
   let (buy_qty,price,freight,st)=(buy_qty.ok_or("Custo do insumo ausente")?,
    price.ok_or("Preco do insumo ausente")?,freight.ok_or("Frete do insumo ausente")?,st.ok_or("ST do insumo ausente")?);
   if buy_qty<=0{return Err("Quantidade de compra invalida".into());}
   let sum=price.checked_add(freight).and_then(|v|v.checked_add(st)).ok_or("Custo excedeu limite")?;
-  total+=use_qty as f64*sum as f64/buy_qty as f64;
+  total+=use_qty as f64*sum as f64/(buy_qty as f64*1000.0);
   if !total.is_finite(){return Err("CMV fora do limite".into());}
   count+=1;
  }
@@ -229,7 +241,7 @@ mod tests{
   assert!((cost.total_cost_cents-78.0).abs()<1e-9);
   let detail=recipe_detail(&db,"2026-09","1234").unwrap();
   assert_eq!(detail.lines.len(),1);
-  assert_eq!(detail.lines[0].quantity_used,150);
+  assert_eq!(detail.lines[0].quantity_used,150.0);
   assert_eq!(detail.lines[0].purchase_total_cents,520);
   assert!((detail.total_cost_cents-78.0).abs()<1e-9);
   assert!(set_line(&mut db,"2026-09","1234","LEITE",150).is_err());
