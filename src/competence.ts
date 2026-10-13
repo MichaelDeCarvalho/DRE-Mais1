@@ -7,6 +7,7 @@ export const PERIOD_COMMANDS = [
   'get_dre_preview',
   'list_expenses',
   'list_financial_parameters',
+  'get_validated_dre_workbook',
 ] as const;
 export type PeriodCommand = (typeof PERIOD_COMMANDS)[number];
 
