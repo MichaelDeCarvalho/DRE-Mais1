@@ -96,3 +96,18 @@ body {background:var(--app-bg);color:var(--app-text);}
 .parameter-edit-form .action-line {margin-top:10px;border-top:1px solid var(--app-border);}
 .parameter-edit-form .action-line p {color:var(--app-text);}
 @media(max-width:850px){.parameter-edit-header{flex-direction:column}.edit-mode-tag{white-space:normal}.parameter-actions{justify-content:flex-start}}
+
+
+/* Seletor de produto por competencia, sem dependencia de codigo decorado. */
+.recipe-selection {background:var(--app-soft);border:1px solid var(--app-border);padding:15px;border-radius:10px;margin-bottom:14px;}
+.recipe-selection > label {display:block;color:var(--app-text);font-size:13px;font-weight:700;margin-bottom:8px;}
+.recipe-selection > input {width:100%;max-width:460px;background:var(--app-field);color:var(--app-text);border:1px solid var(--app-field-border);border-radius:8px;min-height:42px;padding:8px 12px;}
+.recipe-choices {display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:8px;margin-top:11px;}
+.recipe-choice {display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;background:var(--app-surface);color:var(--app-text);border:1px solid var(--app-border);border-radius:9px;padding:11px;min-width:0;}
+.recipe-choice:hover:not(:disabled),.recipe-choice:focus-visible {border-color:var(--app-accent);}
+.recipe-choice.selected {border-color:var(--app-accent);box-shadow:inset 0 0 0 1px var(--app-accent);}
+.recipe-choice strong {font-size:12px;overflow-wrap:anywhere;}
+.recipe-choice span {font-size:11px;color:var(--app-muted);}
+.recipe-choice small {font-size:11px;color:var(--app-muted);}
+.recipe-choice:disabled {opacity:.6;cursor:not-allowed;}
+.recipe-selected {font-size:12px;line-height:1.5;background:var(--app-surface);border:1px solid var(--app-border);border-radius:8px;padding:9px 12px;margin:12px 0 0;color:var(--app-text);}
