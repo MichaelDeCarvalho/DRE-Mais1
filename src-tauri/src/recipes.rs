@@ -52,6 +52,45 @@ pub fn recipe_detail(db:&Connection,period:&str,product_code:&str)->Result<Recip
  if lines.is_empty(){return Err("Ficha tecnica nao cadastrada para produto e competencia.".into());}
  Ok(RecipeDetail{product_code:product_code.into(),product_name:name,period:period.into(),lines,total_cost_cents:total})
 }
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct ProductCostRow {
+ pub product_code:String,pub product_name:String,
+ pub quantity_sold:i64,pub sales_cents:i64,
+ pub unit_cost_cents:Option<f64>,pub total_theoretical_cents:Option<f64>,
+ pub status:String,
+}
+pub fn monthly_cost_overview(db:&Connection,period:&str)->Result<Vec<ProductCostRow>,String>{
+ if !valid_period(period){return Err("Competencia invalida.".into());}
+ let mut stmt=db.prepare("SELECT r.external_code,MAX(r.product_name),SUM(r.quantity),SUM(r.value_cents)
+ FROM import_product_rows r JOIN imports i ON i.id=r.import_id JOIN periods p ON p.id=i.period_id
+ WHERE p.store_id=1 AND p.year_month=?1 AND i.kind='PRODUCTS'
+ AND r.row_type='SALE' AND r.external_code IS NOT NULL
+ GROUP BY r.external_code ORDER BY r.external_code").map_err(|e|e.to_string())?;
+ let rows=stmt.query_map([period],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?)))
+ .map_err(|e|e.to_string())?;
+ let data=rows.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+ let mut out=Vec::new();
+ for (code,name,qty,sales) in data {
+  let mapped:Option<i64>=db.query_row("SELECT product_id FROM product_external_codes WHERE store_id=1 AND external_code=?1",[&code],|r|r.get(0))
+   .optional().map_err(|e|e.to_string())?;
+  if mapped.is_none(){
+   out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_CADASTRO".into()});
+   continue;
+  }
+  // Sem ficha completa validada, nao emitir custo numerico falso.
+  match recipe_detail(db,period,&code) {
+   Ok(detail)=>{
+    let total=detail.total_cost_cents*qty as f64;
+    if !total.is_finite(){return Err("CMV teorico excedeu limite".into());}
+    out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:Some(detail.total_cost_cents),total_theoretical_cents:Some(total),status:"FICHA_PARCIAL_NAO_HOMOLOGADA".into()});
+   },
+   Err(_)=>out.push(ProductCostRow{product_code:code,product_name:name,quantity_sold:qty,sales_cents:sales,unit_cost_cents:None,total_theoretical_cents:None,status:"SEM_FICHA_OU_CUSTO".into()}),
+  }
+ }
+ if out.is_empty(){return Err("Nenhuma venda importada para a competencia.".into());}
+ Ok(out)
+}
 fn valid_period(p:&str)->bool {
  let v=p.split('-').collect::<Vec<_>>();
  v.len()==2 && v[0].len()==4 && v[0].chars().all(|c|c.is_ascii_digit())
