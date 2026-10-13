@@ -20,6 +20,7 @@ CREATE TABLE dre_workbook_rows(
  source_id INTEGER NOT NULL REFERENCES dre_workbook_sources(id) ON DELETE RESTRICT,
  source_row INTEGER NOT NULL CHECK(source_row BETWEEN 1 AND 200),
  label TEXT NOT NULL,
+ raw_auxiliary TEXT NOT NULL DEFAULT '',
  raw_value TEXT NOT NULL,
  value_cents INTEGER,
  value_kind TEXT NOT NULL CHECK(value_kind IN('MONETARIO','PERCENTUAL','SEM_VALOR','TEXTO')),
