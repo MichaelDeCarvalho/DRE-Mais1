@@ -437,9 +437,9 @@ export function App() {
     const params=records.list_financial_parameters;
     if(params.status==='fulfilled')setParameters(params.value as FinancialParameter[]);
     else setParamMessage(explainError(params.reason));
-    const reference=records.get_validated_dre_workbook;
-    if(reference.status==='fulfilled')setDreWorkbook(reference.value as DreWorkbookSource|null);
-    else setDreWorkbookError(explainError(reference.reason));
+    const dreReferenceResult=records.get_validated_dre_workbook;
+    if(dreReferenceResult.status==='fulfilled')setDreWorkbook(dreReferenceResult.value as DreWorkbookSource|null);
+    else setDreWorkbookError(explainError(dreReferenceResult.reason));
     const errors=Object.values(records).filter(item=>item.status==='rejected').length;
     setViewedPeriod(reference);
     setPeriodNotice(errors===0
