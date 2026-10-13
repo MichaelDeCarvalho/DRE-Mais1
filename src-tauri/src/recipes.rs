@@ -8,6 +8,50 @@ use serde::Serialize;
 pub struct RecipeCost {
  pub product_code:String,pub period:String,pub total_cost_cents:f64,pub ingredient_count:usize,
 }
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct RecipeLineDetail {
+ pub ingredient_code:String,pub ingredient_name:String,pub unit:String,
+ pub quantity_used:i64,pub quantity_purchased:i64,
+ pub purchase_total_cents:i64,pub cost_used_cents:f64,
+}
+#[derive(Debug,Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct RecipeDetail {
+ pub product_code:String,pub product_name:String,pub period:String,
+ pub lines:Vec<RecipeLineDetail>,pub total_cost_cents:f64,
+}
+pub fn recipe_detail(db:&Connection,period:&str,product_code:&str)->Result<RecipeDetail,String>{
+ if !valid_period(period)||product_code.trim().is_empty(){return Err("Competencia ou codigo invalido.".into());}
+ let name:String=db.query_row("SELECT p.display_name FROM products p JOIN product_external_codes pc ON pc.product_id=p.id WHERE pc.store_id=1 AND pc.external_code=?1",
+ [product_code],|r|r.get(0)).optional().map_err(|e|e.to_string())?.ok_or("Codigo do produto nao cadastrado")?;
+ let mut stmt=db.prepare("SELECT i.code,i.name,i.base_unit,l.quantity_base,c.quantity_base,c.purchase_cents,c.freight_cents,c.st_cents
+ FROM recipe_lines l JOIN recipe_versions rv ON rv.id=l.recipe_id
+ JOIN product_external_codes pc ON pc.product_id=rv.product_id AND pc.store_id=1
+ JOIN ingredients i ON i.id=l.ingredient_id AND i.store_id=1
+ LEFT JOIN ingredient_purchase_costs c ON c.ingredient_id=i.id AND c.period=rv.period
+ WHERE rv.period=?1 AND pc.external_code=?2 ORDER BY i.code").map_err(|e|e.to_string())?;
+ let rows=stmt.query_map(params![period,product_code],|r|Ok((
+ r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,
+ r.get::<_,i64>(3)?,r.get::<_,Option<i64>>(4)?,
+ r.get::<_,Option<i64>>(5)?,r.get::<_,Option<i64>>(6)?,r.get::<_,Option<i64>>(7)?)))
+ ).map_err(|e|e.to_string())?;
+ let mut lines=Vec::new();let mut total=0.0f64;
+ for row in rows {
+  let (code,name,unit,used,bought,price,freight,st)=row.map_err(|e|e.to_string())?;
+  let bought=bought.ok_or(format!("Insumo {code} sem custo na competencia"))?;
+  let price=price.ok_or("Preco ausente")?;let freight=freight.ok_or("Frete ausente")?;let st=st.ok_or("ST ausente")?;
+  let sum=price.checked_add(freight).and_then(|v|v.checked_add(st)).ok_or("Custo fora do limite")?;
+  if bought<=0||used<=0{return Err(format!("Quantidade invalida do insumo {code}"));}
+  let cost=used as f64*sum as f64/bought as f64;
+  if !cost.is_finite(){return Err("Custo calculado invalido".into());}
+  total+=cost;
+  if !total.is_finite(){return Err("Total da receita excedeu limite".into());}
+  lines.push(RecipeLineDetail{ingredient_code:code,ingredient_name:name,unit,quantity_used:used,quantity_purchased:bought,purchase_total_cents:sum,cost_used_cents:cost});
+ }
+ if lines.is_empty(){return Err("Ficha tecnica nao cadastrada para produto e competencia.".into());}
+ Ok(RecipeDetail{product_code:product_code.into(),product_name:name,period:period.into(),lines,total_cost_cents:total})
+}
 fn valid_period(p:&str)->bool {
  let v=p.split('-').collect::<Vec<_>>();
  v.len()==2 && v[0].len()==4 && v[0].chars().all(|c|c.is_ascii_digit())
@@ -69,6 +113,11 @@ mod tests{
   ingredients::register(&mut db,"2026-10","LEITE","Leite","ML",1000,720).unwrap();
   let cost=set_line(&mut db,"2026-09","1234","LEITE",150).unwrap();
   assert!((cost.total_cost_cents-78.0).abs()<1e-9);
+  let detail=recipe_detail(&db,"2026-09","1234").unwrap();
+  assert_eq!(detail.lines.len(),1);
+  assert_eq!(detail.lines[0].quantity_used,150);
+  assert_eq!(detail.lines[0].purchase_total_cents,520);
+  assert!((detail.total_cost_cents-78.0).abs()<1e-9);
   assert!(set_line(&mut db,"2026-09","1234","LEITE",150).is_err());
   assert!(recipe_cost(&db,"2026-10","1234").is_err());
   assert!((recipe_cost(&db,"2026-09","1234").unwrap().total_cost_cents-78.0).abs()<1e-9);
