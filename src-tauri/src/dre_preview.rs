@@ -21,7 +21,7 @@ pub struct DrePreview {
  pub recorded_fixed_cents:i64,
  pub recorded_tax_cents:i64,
  pub recorded_expense_count:usize,
- pub estimated_royalties_cents:i64,
+ pub estimated_royalties_cents:Option<i64>,
  pub estimated_payment_fees:Vec<financial_rules::PaymentFeeEstimate>,
 }
 pub fn preview(db:&Connection,period:&str)->Result<DrePreview,String>{
@@ -44,7 +44,11 @@ pub fn preview(db:&Connection,period:&str)->Result<DrePreview,String>{
   status:if !sales.reconciled{"RECONCILIACAO_PENDENTE"}else if !complete{"CMV_INCOMPLETO"}else{"CMV_APROVADO_DRE_INCOMPLETA"}.into(),
   estimated_royalties_cents:royalties,estimated_payment_fees:fees,
   recorded_variable_cents:variable,recorded_fixed_cents:fixed,recorded_tax_cents:tax,recorded_expense_count:registered.len(),
-  unregistered_components:vec!["Despesas variaveis e taxas".into(),"Tributos".into(),"Despesas fixas".into(),"Estoque fisico e CMV contabil".into()],
+  unregistered_components:{
+    let mut missing=vec!["Despesas variaveis e taxas".into(),"Tributos".into(),"Despesas fixas".into(),"Estoque fisico e CMV contabil".into()];
+    if royalties.is_none(){missing.push("Royalties: taxa historica sem confirmacao".into());}
+    missing
+  },
  })
 }
 #[cfg(test)]
