@@ -35,6 +35,8 @@ export function App() {
   const [recipeError, setRecipeError] = useState('');
   const [recipeCost, setRecipeCost] = useState<{ productCode:string; period:string; totalCostCents:number; ingredientCount:number } | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
+  const [recipeApprovalNote,setRecipeApprovalNote] = useState('');
+  const [recipeApprovalMessage,setRecipeApprovalMessage] = useState('');
   const [costRows,setCostRows] = useState<Array<{productCode:string;productName:string;quantitySold:number;salesCents:number;unitCostCents:number|null;totalTheoreticalCents:number|null;status:string;salePriceCents:number|null;cmvPercent:number|null}>>([]);
   const [costBusy,setCostBusy] = useState(false);
   const [salePriceCode,setSalePriceCode] = useState('');
@@ -184,6 +186,16 @@ export function App() {
     } catch(e) {setRecipeError(explainError(e));}
     finally {setRecipeBusy(false);}
   }
+  async function approveCurrentRecipe(){
+    if(recipeBusy)return;
+    setRecipeBusy(true);setRecipeError('');setRecipeApprovalMessage('');
+    try{
+      await invoke('approve_recipe',{period,productCode:recipeProduct.trim(),note:recipeApprovalNote.trim()});
+      setRecipeApprovalMessage('Ficha aprovada nesta competencia. Os ingredientes ficaram bloqueados.');
+      setRecipeApprovalNote('');setCostRows([]);
+    }catch(e){setRecipeError(explainError(e));}
+    finally{setRecipeBusy(false);}
+  }
   async function inspectRecipe() {
     if(recipeBusy)return;
     setRecipeBusy(true);setRecipeError('');setRecipeCost(null);setRecipeDetail(null);
@@ -318,6 +330,11 @@ export function App() {
             <button type="button" className="outline-button" disabled={recipeBusy || !recipeProduct.trim()} onClick={inspectRecipe}>Consultar custo da ficha</button>
           </div>
           <p>O vínculo de cada insumo é único por produto e competência. Correções de receitas existentes serão implementadas com versionamento e revisão controlada, não por sobrescrita silenciosa.</p>
+          {recipeDetail && <div className="selectors">
+            <label>Conferência da ficha (justificativa obrigatória)<input value={recipeApprovalNote} maxLength={500} disabled={recipeBusy} onChange={e=>setRecipeApprovalNote(e.target.value)} placeholder="Conferi todos os insumos e quantidades da receita"/></label>
+            <button type="button" className="primary-button" disabled={recipeBusy||!recipeApprovalNote.trim()} onClick={approveCurrentRecipe}>Aprovar ficha desta competência</button>
+          </div>}
+          {recipeApprovalMessage && <div className="feedback feedback-info" role="status">{recipeApprovalMessage}</div>}
           {recipeError && <div className="feedback feedback-error" role="alert">{recipeError}</div>}
           {recipeDetail && <div className="scroll-table" aria-label="Composição detalhada da ficha técnica">
             <h3>Composição de {recipeDetail.productName} — {recipeDetail.period}</h3>
@@ -332,7 +349,7 @@ export function App() {
           <div className="action-line"><p>Vendas por código e competência, relacionadas aos custos das receitas cadastradas.</p><button type="button" className="outline-button" disabled={costBusy} onClick={consultCostOverview}>{costBusy ? 'Consultando…' : 'Consultar custos por produto'}</button></div>
           {costError && <div className="feedback feedback-error" role="alert">{costError}</div>}
           {costRows.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th className="num">Vendido</th><th className="num">Vendas</th><th className="num">Custo técnico unitário</th><th className="num">Custo teórico × quantidade</th><th>Preço tabela</th><th>CMV unitário provisório</th><th>Situação</th></tr></thead><tbody>
-            {costRows.map(row=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.productName}</td><td className="num">{row.quantitySold}</td><td className="num">{brl(row.salesCents)}</td><td className="num">{row.unitCostCents===null?'—':brl(Math.round(row.unitCostCents))}</td><td className="num">{row.totalTheoreticalCents===null?'—':brl(Math.round(row.totalTheoreticalCents))}</td><td>{row.salePriceCents===null?'—':brl(row.salePriceCents)}</td><td>{row.cmvPercent===null?'—':`${row.cmvPercent.toFixed(2)}%`}</td><td>{row.status==='FICHA_PARCIAL_NAO_HOMOLOGADA'?'Ficha parcial, custo provisório':row.status==='SEM_CADASTRO'?'Sem cadastro':'Sem ficha ou custo'}</td></tr>)}
+            {costRows.map(row=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.productName}</td><td className="num">{row.quantitySold}</td><td className="num">{brl(row.salesCents)}</td><td className="num">{row.unitCostCents===null?'—':brl(Math.round(row.unitCostCents))}</td><td className="num">{row.totalTheoreticalCents===null?'—':brl(Math.round(row.totalTheoreticalCents))}</td><td>{row.salePriceCents===null?'—':brl(row.salePriceCents)}</td><td>{row.cmvPercent===null?'—':`${row.cmvPercent.toFixed(2)}%`}</td><td>{row.status==='FICHA_APROVADA'?'Ficha aprovada':row.status==='FICHA_PARCIAL_NAO_HOMOLOGADA'?'Ficha parcial, custo provisório':row.status==='SEM_CADASTRO'?'Sem cadastro':'Sem ficha ou custo'}</td></tr>)}
           </tbody></table></div>}
           <p className="footnote">Esta prévia não totaliza CMV oficial enquanto houver fichas sem validação. O preço unitário de venda e o percentual de CMV ainda serão tratados separadamente.</p>
         </section>
