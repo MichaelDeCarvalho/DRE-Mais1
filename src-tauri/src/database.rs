@@ -95,7 +95,7 @@ pub fn open_database(path: &std::path::Path) -> Result<Connection, String> {
         tx.commit().map_err(|e|e.to_string())?;
     }
     Ok(db)
-
+}
 
 pub fn save_reports(db: &mut Connection, selected_period: &str, products: ProductReport, payments: PaymentReport) -> Result<ImportSummary, String> {
     importer::validate_selected_period(selected_period, &payments.period)?;
