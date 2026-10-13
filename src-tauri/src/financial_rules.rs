@@ -38,6 +38,7 @@ pub fn configured_rate(db:&rusqlite::Connection,period:&str,code:&str,category:&
 }
 pub fn calculate_configured_fees(db:&rusqlite::Connection,period:&str,methods:&[MethodTotal])->Result<Vec<PaymentFeeEstimate>,String>{
  let mut result=calculate_fees(methods)?;
+ if period < "2026-09" { for fee in &mut result { if fee.code!="cash" { fee.rate_basis_points=None;fee.estimated_fee_cents=None;fee.status="SEM_TAXA_HISTORICA_CONFIRMADA".into(); } } }
  for fee in &mut result {
   let key=match fee.code.as_str(){"credit"=>"CREDITO","debit"=>"DEBITO","pix"=>"PIX","wallet"=>"CARTEIRA_DIGITAL","picpay"=>"PICPAY","meal_voucher"=>"VALE_REFEICAO","cash"=>"DINHEIRO",_=>continue};
   if let Some(rate)=configured_rate(db,period,key,"PAYMENT_FEE","PAYMENT_METHOD")?{
@@ -52,6 +53,7 @@ pub fn configured_royalties(db:&rusqlite::Connection,period:&str,revenue:i64)->R
  match configured_rate(db,period,"ROYALTIES","ROYALTIES","NET_REVENUE")?{
   Some(rate) if revenue>=0=>i64::try_from(((revenue as i128)*(rate as i128)+5000)/10000).map_err(|_|"Royalties fora do limite".into()),
   Some(_)=>Err("Receita negativa não suportada".into()),
+  None if period < "2026-09" => Err("Royalties anteriores a setembro de 2026 exigem taxa histórica confirmada".into()),
   None=>royalties_cents(revenue)
  }
 }
