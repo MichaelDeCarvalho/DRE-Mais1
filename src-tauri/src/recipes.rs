@@ -199,6 +199,9 @@ mod tests{
   approve_recipe(&mut db,"2026-09","1234","Conferida quantidade e embalagem").unwrap();
   assert!(is_approved(&db,"2026-09","1234").unwrap());
   assert!(approve_recipe(&mut db,"2026-09","1234","Duplo aceite").is_err());
+  let blocked=db.execute("UPDATE recipe_lines SET quantity_base=250 WHERE recipe_id=(SELECT id FROM recipe_versions WHERE period='2026-09' LIMIT 1)",[]);
+  assert!(blocked.is_err(),"A protecao SQLite deve impedir edicao apos aprovacao");
+  assert!((recipe_detail(&db,"2026-09","1234").unwrap().total_cost_cents-78.0).abs()<1e-9);
   assert!(recipe_cost(&db,"2026-10","1234").is_err());
   assert!((recipe_cost(&db,"2026-09","1234").unwrap().total_cost_cents-78.0).abs()<1e-9);
  }
