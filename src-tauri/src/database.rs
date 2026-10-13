@@ -277,14 +277,14 @@ mod tests {
         assert!(load_period_summary(&db, "2026-09").unwrap_err().contains("Integridade"));
     }
     #[test]
-    fn upgrade_v9_preserves_existing_mapping_and_adds_financial_parameters(){
+    fn upgrade_v9_preserves_mapping_and_adds_rules_and_recipe_precision(){
         let t=tempfile::tempdir().unwrap();
         let path=t.path().join("migration.sqlite");
         {
             let db=open_database(&path).unwrap();
             db.execute("INSERT INTO products(store_id,display_name) VALUES(1,'Produto anterior')",[]).unwrap();
             db.execute("INSERT INTO product_external_codes(store_id,product_id,external_code) VALUES(1,1,'TESTE_ANTIGO')",[]).unwrap();
-            db.execute_batch("DROP TRIGGER IF EXISTS forbid_financial_rule_version_update; DROP TRIGGER IF EXISTS forbid_financial_rule_version_delete; DROP TABLE financial_rule_versions; DROP TABLE financial_rules; PRAGMA user_version=9;").unwrap();
+            db.execute_batch("DROP TRIGGER IF EXISTS forbid_financial_rule_version_update; DROP TRIGGER IF EXISTS forbid_financial_rule_version_delete; DROP TABLE financial_rule_versions; DROP TABLE financial_rules; ALTER TABLE recipe_lines DROP COLUMN quantity_milli_base; PRAGMA user_version=9;").unwrap();
         }
         let db=open_database(&path).unwrap();
         let version:i64=db.pragma_query_value(None,"user_version",|row|row.get(0)).unwrap();
