@@ -11,7 +11,35 @@ function explainError(reason: unknown): string {
   return typeof reason === 'string' ? reason : reason instanceof Error ? reason.message : 'Erro inesperado. Verifique os arquivos e tente novamente.';
 }
 
+type ThemePreference = 'dark' | 'light' | 'system';
+function initialTheme(): ThemePreference {
+  try {
+    const saved = window.localStorage.getItem('dremais1.theme');
+    if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
+  } catch { /* Preferencia local pode estar indisponivel. */ }
+  return 'dark';
+}
 export function App() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(initialTheme);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true);
+  const [activeSection, setActiveSection] = useState('period-heading');
+  const effectiveTheme = themePreference === 'system' ? (systemDark ? 'dark' : 'light') : themePreference;
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    try { window.localStorage.setItem('dremais1.theme', themePreference); } catch { /* Sem armazenamento persistente. */ }
+  }, [themePreference, effectiveTheme]);
+  useEffect(() => {
+    const matcher = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!matcher) return;
+    const update = () => setSystemDark(matcher.matches);
+    matcher.addEventListener('change', update);
+    return () => matcher.removeEventListener('change', update);
+  }, []);
+  function navigate(section: string) {
+    setActiveSection(section);
+    requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('09');
   const [productsPath, setProductsPath] = useState<string | null>(null);
@@ -286,12 +314,18 @@ export function App() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>Sistema desktop · Marco 1</small></div></div>
-        <nav aria-label="Navegação principal"><span className="nav-active">▤ <span>Importação mensal</span></span></nav>
-        <div className="sidebar-bottom"><span className="status-dot" /> Dados armazenados localmente <small>CMV e DRE: não habilitados neste marco</small></div>
+        <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>Gestão financeira offline</small></div></div>
+        <nav aria-label="Navegação principal" className="app-nav">
+          {[
+            ['period-heading','Competência'],['catalog-heading','Catálogo'],['ingredient-heading','Insumos'],['recipe-heading','Fichas técnicas'],
+            ['cmv-preview-heading','CMV'],['price-heading','Preços de venda'],['expense-heading','Despesas'],['dre-preview-heading','Prévia da DRE'],
+            ['appearance-heading','Configurações'],
+          ].map(([id,label]) => <button key={id} type="button" className={activeSection === id ? 'nav-link nav-active' : 'nav-link'} onClick={() => navigate(id)}>{label}</button>)}
+        </nav>
+        <div className="sidebar-bottom"><span className="status-dot" /> Dados armazenados localmente <small>DRE em validação · Sem fechamento definitivo</small></div>
       </aside>
       <main className="content">
-        <header className="page-header"><div><span className="eyebrow">MARCO FUNCIONAL 01</span><h1>Importação e conciliação</h1><p>Selecione os relatórios originais e valide a movimentação do mês.</p></div><div className="header-tag">Processamento offline</div></header>
+        <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas organizados por competência. Fechamento sujeito à validação.</p></div><div className="header-tag">Processamento offline</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
           <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { setYear(e.target.value); setResult(null); setEditingCode(null); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { setMonth(e.target.value); setResult(null); setEditingCode(null); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="outline-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>Consultar importação salva</button></div>
@@ -440,7 +474,15 @@ export function App() {
           {expenseRows.length>0 && <div className="scroll-table"><table><thead><tr><th>Tipo</th><th>Categoria</th><th>Descrição</th><th>Documento</th><th className="num">Valor</th></tr></thead><tbody>{expenseRows.map(row=><tr key={row.id}><td>{row.expenseKind}</td><td>{row.category}</td><td>{row.description}</td><td>{row.reference||'Não informado'}</td><td className="num">{brl(row.amountCents)}</td></tr>)}</tbody></table></div>}
           <p className="footnote">Os valores lançados representam apenas despesas registradas. É necessária conferência de completude antes do fechamento da DRE.</p>
         </section>
-        <footer>Primeiro marco · Somente importação, validação e conciliação · Sem CMV ou DRE</footer>
+        <section className="section-block" aria-labelledby="appearance-heading">
+          <div className="section-heading"><span className="step">⚙</span><div><h2 id="appearance-heading">Configurações · Aparência</h2><p>Escolha o visual do aplicativo. Sua preferência é lembrada neste computador.</p></div></div>
+          <div className="theme-options" role="group" aria-label="Tema do aplicativo">
+            <button type="button" aria-pressed={themePreference === 'dark'} className={themePreference === 'dark' ? 'theme-option selected' : 'theme-option'} onClick={() => setThemePreference('dark')}>☾ Escuro</button>
+            <button type="button" aria-pressed={themePreference === 'light'} className={themePreference === 'light' ? 'theme-option selected' : 'theme-option'} onClick={() => setThemePreference('light')}>☀ Claro</button>
+            <button type="button" aria-pressed={themePreference === 'system'} className={themePreference === 'system' ? 'theme-option selected' : 'theme-option'} onClick={() => setThemePreference('system')}>▣ Acompanhar Windows</button>
+          </div>
+        </section>
+        <footer>DRE Mais1 · Dados locais · Fechamento gerencial condicionado à conferência</footer>
       </main>
     </div>
   );
