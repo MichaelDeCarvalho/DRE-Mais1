@@ -40,6 +40,31 @@ export function App() {
     requestAnimationFrame(() => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }
 
+  type FinancialParameter = {code:string;name:string;category:string;calculationBase:string;effectiveFrom:string|null;basisPoints:number|null;source:string|null};
+  const [parameters,setParameters] = useState<FinancialParameter[]>([]);
+  const [paramCode,setParamCode] = useState('');
+  const [paramName,setParamName] = useState('');
+  const [paramCategory,setParamCategory] = useState('PAYMENT_FEE');
+  const [paramBase,setParamBase] = useState('PAYMENT_METHOD');
+  const [paramRate,setParamRate] = useState('');
+  const [paramSource,setParamSource] = useState('Confirmado pelo operador');
+  const [paramNote,setParamNote] = useState('');
+  const [paramMessage,setParamMessage] = useState('');
+  const [paramBusy,setParamBusy] = useState(false);
+  async function loadParameters(period:string){
+    try { setParameters(await invoke<FinancialParameter[]>('list_financial_parameters',{period}));setParamMessage(''); }
+    catch(e){setParamMessage(explainError(e));}
+  }
+  async function saveParameter(period:string){
+    const raw=paramRate.trim().replace(',','.');
+    if(!/^\d{1,3}(\.\d{1,2})?$/.test(raw)||Number(raw)>100){setParamMessage('Informe percentual válido de 0 a 100 com até 2 casas decimais.');return;}
+    setParamBusy(true);setParamMessage('');
+    try{
+      await invoke('register_financial_parameter',{code:paramCode.trim().toUpperCase(),name:paramName,category:paramCategory,base:paramBase,period,basisPoints:Math.round(Number(raw)*100),source:paramSource,note:paramNote});
+      await loadParameters(period);setParamMessage('Nova vigência cadastrada. Versões anteriores preservadas.');
+    }catch(e){setParamMessage(explainError(e));}
+    finally{setParamBusy(false);}
+  }
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('09');
   const [productsPath, setProductsPath] = useState<string | null>(null);
@@ -319,7 +344,7 @@ export function App() {
           {[
             ['period-heading','Competência'],['catalog-heading','Catálogo'],['ingredient-heading','Insumos'],['recipe-heading','Fichas técnicas'],
             ['cmv-preview-heading','CMV'],['price-heading','Preços de venda'],['expense-heading','Despesas'],['dre-preview-heading','Prévia da DRE'],
-            ['appearance-heading','Configurações'],
+            ['parameters-heading','Parâmetros financeiros'],['appearance-heading','Aparência'],
           ].map(([id,label]) => <button key={id} type="button" className={activeSection === id ? 'nav-link nav-active' : 'nav-link'} onClick={() => navigate(id)}>{label}</button>)}
         </nav>
         <div className="sidebar-bottom"><span className="status-dot" /> Dados armazenados localmente <small>DRE em validação · Sem fechamento definitivo</small></div>
@@ -476,6 +501,22 @@ export function App() {
           {expenseNotice && <div className="feedback feedback-info" role="status">{expenseNotice}</div>}
           {expenseRows.length>0 && <div className="scroll-table"><table><thead><tr><th>Tipo</th><th>Categoria</th><th>Descrição</th><th>Documento</th><th className="num">Valor</th></tr></thead><tbody>{expenseRows.map(row=><tr key={row.id}><td>{row.expenseKind}</td><td>{row.category}</td><td>{row.description}</td><td>{row.reference||'Não informado'}</td><td className="num">{brl(row.amountCents)}</td></tr>)}</tbody></table></div>}
           <p className="footnote">Os valores lançados representam apenas despesas registradas. É necessária conferência de completude antes do fechamento da DRE.</p>
+        </section>
+        <section className="section-block" aria-labelledby="parameters-heading">
+          <div className="section-heading"><span className="step">%</span><div><h2 id="parameters-heading">Configurações · Parâmetros financeiros</h2><p>Taxas editáveis por competência. Alterações futuras não sobrescrevem versões anteriores.</p></div></div>
+          <div className="action-line"><p>Referência: {periodLabel(period)}. Percentuais são parâmetros, não despesas automaticamente contabilizadas.</p><button type="button" className="outline-button" disabled={paramBusy} onClick={()=>loadParameters(period)}>Consultar parâmetros</button></div>
+          {parameters.length>0&&<div className="scroll-table"><table><thead><tr><th>Regra</th><th>Categoria</th><th>Base</th><th>Vigência</th><th>Percentual</th></tr></thead><tbody>{parameters.map(p=><tr key={p.code}><td>{p.name} ({p.code})</td><td>{p.category}</td><td>{p.calculationBase}</td><td>{p.effectiveFrom||'Não vigente'}</td><td>{p.basisPoints===null?'Pendente':(p.basisPoints/100).toFixed(2)+'%'}</td></tr>)}</tbody></table></div>}
+          <div className="selectors">
+            <label>Código único<input value={paramCode} maxLength={64} onChange={e=>setParamCode(e.target.value.toUpperCase())} placeholder="EX.: CREDITO" /></label>
+            <label>Descrição<input value={paramName} maxLength={120} onChange={e=>setParamName(e.target.value)} placeholder="Ex.: Cartão crédito" /></label>
+            <label>Categoria<select value={paramCategory} onChange={e=>setParamCategory(e.target.value)}><option value="PAYMENT_FEE">Taxa de pagamento</option><option value="ROYALTIES">Royalties</option><option value="PLATFORM_FEE">Taxa plataforma</option><option value="TAX_ESTIMATE">Estimativa tributária</option><option value="OTHER">Outra</option></select></label>
+            <label>Base de cálculo<select value={paramBase} onChange={e=>setParamBase(e.target.value)}><option value="PAYMENT_METHOD">Meio de pagamento</option><option value="NET_REVENUE">Receita após descontos</option><option value="PLATFORM_SALES">Vendas da plataforma</option><option value="DOCUMENTED">Valor documental</option><option value="MANUAL">Manual</option></select></label>
+            <label>Percentual (%)<input inputMode="decimal" value={paramRate} onChange={e=>setParamRate(e.target.value)} placeholder="Ex.: 2,50" /></label>
+            <label>Fonte<input value={paramSource} maxLength={200} onChange={e=>setParamSource(e.target.value)} /></label>
+            <label>Justificativa<input value={paramNote} maxLength={500} onChange={e=>setParamNote(e.target.value)} /></label>
+          </div>
+          <div className="action-line"><p>A nova vigência começa em {periodLabel(period)}. Registros da mesma competência não podem ser substituídos.</p><button type="button" className="primary-button" disabled={paramBusy||!paramCode||!paramName||!paramRate||!paramSource} onClick={()=>saveParameter(period)}>Salvar nova vigência</button></div>
+          {paramMessage&&<div className="feedback feedback-info" role="status">{paramMessage}</div>}
         </section>
         <section className="section-block" aria-labelledby="appearance-heading">
           <div className="section-heading"><span className="step">⚙</span><div><h2 id="appearance-heading">Configurações · Aparência</h2><p>Escolha o visual do aplicativo. Sua preferência é lembrada neste computador.</p></div></div>
