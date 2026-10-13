@@ -1,5 +1,6 @@
 //! Simulacao gerencial: taxas informadas, nao comprovacao de tarifas debitadas.
 use serde::Serialize;
+use rusqlite::OptionalExtension;
 use crate::importer::MethodTotal;
 #[derive(Debug,Serialize)]
 #[serde(rename_all="camelCase")]
@@ -30,6 +31,31 @@ pub fn royalties_cents(revenue_cents:i64)->Result<i64,String>{
  if revenue_cents<0{return Err("Receita negativa nao suportada para royalties".into());}
  i64::try_from(((revenue_cents as i128)*7+50)/100).map_err(|_|"Royalties fora do limite".into())
 }
+
+pub fn configured_rate(db:&rusqlite::Connection,period:&str,code:&str)->Result<Option<i64>,String>{
+ let value=db.query_row("SELECT v.basis_points FROM financial_rule_versions v JOIN financial_rules r ON r.id=v.rule_id WHERE r.rule_code=?1 AND v.effective_from<=?2 ORDER BY v.effective_from DESC LIMIT 1",rusqlite::params![code,period],|r|r.get(0)).optional().map_err(|e|e.to_string())?;
+ Ok(value)
+}
+pub fn calculate_configured_fees(db:&rusqlite::Connection,period:&str,methods:&[MethodTotal])->Result<Vec<PaymentFeeEstimate>,String>{
+ let mut result=calculate_fees(methods)?;
+ for fee in &mut result {
+  let key=match fee.code.as_str(){"credit"=>"CREDITO","debit"=>"DEBITO","pix"=>"PIX","wallet"=>"CARTEIRA_DIGITAL","picpay"=>"PICPAY","meal_voucher"=>"VALE_REFEICAO","cash"=>"DINHEIRO",_=>continue};
+  if let Some(rate)=configured_rate(db,period,key)?{
+   fee.rate_basis_points=Some(rate);
+   fee.estimated_fee_cents=Some(i64::try_from(((fee.base_cents as i128)*(rate as i128)+5000)/10000).map_err(|_|"Taxa fora do limite")?);
+   fee.status="ESTIMADO_PARAMETRO".into();
+  }
+ }
+ Ok(result)
+}
+pub fn configured_royalties(db:&rusqlite::Connection,period:&str,revenue:i64)->Result<i64,String>{
+ match configured_rate(db,period,"ROYALTIES")?{
+  Some(rate) if revenue>=0=>i64::try_from(((revenue as i128)*(rate as i128)+5000)/10000).map_err(|_|"Royalties fora do limite".into()),
+  Some(_)=>Err("Receita negativa não suportada".into()),
+  None=>royalties_cents(revenue)
+ }
+}
+
 #[cfg(test)]
 mod tests{
  use super::*;
