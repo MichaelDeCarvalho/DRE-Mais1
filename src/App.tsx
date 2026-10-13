@@ -44,6 +44,7 @@ export function App() {
   const [salePriceBusy,setSalePriceBusy] = useState(false);
   const [salePriceNotice,setSalePriceNotice] = useState('');
   const [costError,setCostError] = useState('');
+  const [cmvSummary,setCmvSummary] = useState<{period:string;productCodes:number;approvedCodes:number;pendingCodes:number;approvedQuantity:number;approvedCostCents:number;complete:boolean} | null>(null);
 
   const [recipeDetail, setRecipeDetail] = useState<{
     productCode:string;productName:string;period:string;totalCostCents:number;
@@ -218,8 +219,11 @@ export function App() {
   }
   async function consultCostOverview(){
     if(costBusy)return;
-    setCostBusy(true);setCostError('');setCostRows([]);
-    try{setCostRows(await invoke<typeof costRows>('monthly_cost_overview',{period}));}
+    setCostBusy(true);setCostError('');setCostRows([]);setCmvSummary(null);
+    try{
+      setCostRows(await invoke<typeof costRows>('monthly_cost_overview',{period}));
+      setCmvSummary(await invoke<typeof cmvSummary>('monthly_cmv_summary',{period}));
+    }
     catch(e){setCostError(explainError(e));}
     finally{setCostBusy(false);}
   }
@@ -347,6 +351,10 @@ export function App() {
         <section className="section-block" aria-labelledby="cmv-preview-heading">
           <div className="section-heading"><span className="step">08</span><div><h2 id="cmv-preview-heading">Prévia de custos teóricos mensais</h2><p>Somente diagnóstico: fichas parciais não representam CMV homologado nem fechamento DRE.</p></div></div>
           <div className="action-line"><p>Vendas por código e competência, relacionadas aos custos das receitas cadastradas.</p><button type="button" className="outline-button" disabled={costBusy} onClick={consultCostOverview}>{costBusy ? 'Consultando…' : 'Consultar custos por produto'}</button></div>
+          {cmvSummary && <div className="feedback feedback-info" role="status">
+            <strong>Fichas aprovadas: {cmvSummary.approvedCodes} de {cmvSummary.productCodes} códigos vendidos · {cmvSummary.pendingCodes} pendentes</strong>
+            <p>Custo teórico dos produtos aprovados: {brl(Math.round(cmvSummary.approvedCostCents))} ({cmvSummary.approvedQuantity} unidades). {cmvSummary.complete ? 'Cobertura de fichas completa; não equivale à DRE fechada.' : 'CMV mensal INCOMPLETO — não utilizar como custo total da loja.'}</p>
+          </div>}
           {costError && <div className="feedback feedback-error" role="alert">{costError}</div>}
           {costRows.length > 0 && <div className="scroll-table"><table><thead><tr><th>Código</th><th>Produto</th><th className="num">Vendido</th><th className="num">Vendas</th><th className="num">Custo técnico unitário</th><th className="num">Custo teórico × quantidade</th><th>Preço tabela</th><th>CMV unitário provisório</th><th>Situação</th></tr></thead><tbody>
             {costRows.map(row=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.productName}</td><td className="num">{row.quantitySold}</td><td className="num">{brl(row.salesCents)}</td><td className="num">{row.unitCostCents===null?'—':brl(Math.round(row.unitCostCents))}</td><td className="num">{row.totalTheoreticalCents===null?'—':brl(Math.round(row.totalTheoreticalCents))}</td><td>{row.salePriceCents===null?'—':brl(row.salePriceCents)}</td><td>{row.cmvPercent===null?'—':`${row.cmvPercent.toFixed(2)}%`}</td><td>{row.status==='FICHA_APROVADA'?'Ficha aprovada':row.status==='FICHA_PARCIAL_NAO_HOMOLOGADA'?'Ficha parcial, custo provisório':row.status==='SEM_CADASTRO'?'Sem cadastro':'Sem ficha ou custo'}</td></tr>)}
