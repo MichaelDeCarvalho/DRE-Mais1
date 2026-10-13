@@ -35,7 +35,7 @@ pub fn recipe_detail(db:&Connection,period:&str,product_code:&str)->Result<Recip
  r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,
  r.get::<_,i64>(3)?,r.get::<_,Option<i64>>(4)?,
  r.get::<_,Option<i64>>(5)?,r.get::<_,Option<i64>>(6)?,r.get::<_,Option<i64>>(7)?)))
- ).map_err(|e|e.to_string())?;
+ .map_err(|e|e.to_string())?;
  let mut lines=Vec::new();let mut total=0.0f64;
  for row in rows {
   let (code,name,unit,used,bought,price,freight,st)=row.map_err(|e|e.to_string())?;
