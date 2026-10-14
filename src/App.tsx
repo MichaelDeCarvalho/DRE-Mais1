@@ -5,6 +5,7 @@ import { brl, periodLabel } from './format';
 import { consultPeriodModules, nextCompetence } from './competence';
 import { parseQuantityMilliBase } from './quantity';
 import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
+import { validatedDreMetrics } from './dre_reference';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
@@ -670,6 +671,13 @@ export function App() {
           {dreWorkbookError&&<div className="feedback feedback-error" role="alert">{dreWorkbookError}</div>}
           {dreWorkbookMessage&&<div className="feedback feedback-info" role="status">{dreWorkbookMessage}</div>}
           {dreWorkbook&&<>
+            <div className="reference-metrics" role="region" aria-label="Indicadores informados na DRE validada">
+              {validatedDreMetrics(dreWorkbook.rows).map(metric=><div key={metric.key} className={metric.key==='resultado'?'reference-metric reference-result':'reference-metric'}>
+                <small>{metric.label} <span className="mono">D{metric.sourceRow}</span></small>
+                <strong>{metric.status==='INFORMADO' && metric.valueCents!==null ? brl(metric.valueCents) : 'Sem valor confiável nesta célula'}</strong>
+              </div>)}
+            </div>
+            <p className="footnote">Valores exatamente referenciados pelas células da planilha confirmada pelo responsável. O resultado informado não é um segundo cálculo de lucro; despesas, impostos e CMV não são somados novamente. A prévia operacional permanece independente até sua conciliação.</p>
             <div className="feedback feedback-info" role="status">
               <strong>Arquivo preservado: {dreWorkbook.filename} · {periodLabel(dreWorkbook.period)}</strong>
               <p>Receita de referência: {brl(dreWorkbook.revenueCents)} · {dreWorkbook.rows.length} rubricas · SHA-256: <code>{dreWorkbook.sha256.slice(0,12)}…</code>.</p>
