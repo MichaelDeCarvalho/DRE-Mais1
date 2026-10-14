@@ -111,3 +111,12 @@ body {background:var(--app-bg);color:var(--app-text);}
 .recipe-choice small {font-size:11px;color:var(--app-muted);}
 .recipe-choice:disabled {opacity:.6;cursor:not-allowed;}
 .recipe-selected {font-size:12px;line-height:1.5;background:var(--app-surface);border:1px solid var(--app-border);border-radius:8px;padding:9px 12px;margin:12px 0 0;color:var(--app-text);}
+
+
+/* Resumo apenas documental da planilha DRE confirmada; nunca lanca despesas. */
+.reference-metrics {display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:11px;margin:16px 0;}
+.reference-metric {display:grid;gap:8px;min-height:89px;background:var(--app-soft);border:1px solid var(--app-border);padding:14px;border-radius:10px;}
+.reference-metric small {font-size:12px;color:var(--app-muted);display:flex;justify-content:space-between;gap:8px;align-items:baseline;}
+.reference-metric strong {font-size:20px;color:var(--app-text);font-variant-numeric:tabular-nums;}
+.reference-result {border-color:var(--app-accent);}
+.reference-result strong {color:var(--app-accent);}
