@@ -30,7 +30,7 @@ export function validatedDreMetrics(rows:readonly SourceAmountRow[]):DreReferenc
    return {
      key:def.key,label:def.label,sourceRow:def.sourceRow,
      valueCents:matches&&row?.valueKind==='MONETARIO'?row.valueCents:null,
-     status:!matches?'DIVERGENTE':row.valueKind!=='MONETARIO'||row.valueCents===null?'AUSENTE':'INFORMADO',
+     status:!matches?'DIVERGENTE':row?.valueKind!=='MONETARIO'||row?.valueCents===null?'AUSENTE':'INFORMADO',
    };
  });
 }
