@@ -1,6 +1,6 @@
 //! Espelho auditavel da aba DRE MENSAL. Registro documental: nunca contabiliza
 //! novamente totais, subtotais, formulas ou rubricas em managerial_expenses.
-use crate::{database,importer};
+use crate::{database,importer,rubric_review};
 use calamine::{open_workbook_auto_from_rs,Data,Reader};
 use rusqlite::{params,Connection,OptionalExtension};
 use serde::Serialize;
@@ -22,6 +22,7 @@ pub struct SourceView{
  pub period:String,pub filename:String,pub sha256:String,
  pub source_month_label:String,pub revenue_cents:i64,
  pub confirmation:String,pub rows:Vec<SourceRow>,
+ pub rubric_review:rubric_review::RubricReview,
 }
 pub struct ParsedSource{ pub file:importer::OriginalFile,pub source_month_label:String,
  pub revenue_cents:i64,pub rows:Vec<SourceRow> }
@@ -120,7 +121,11 @@ pub fn load(db:&Connection,period:&str)->Result<Option<SourceView>,String>{
  if rows.len()<35 || !rows.iter().any(|r|r.source_row==7&&r.value_cents==Some(revenue_cents)){
   return Err("Espelho DRE incompleto ou com receita inconsistente.".into());
  }
- Ok(Some(SourceView{period:period.into(),filename,sha256,source_month_label,revenue_cents,confirmation,rows}))
+ let inputs=rows.iter().map(|row|rubric_review::RubricInput{
+  source_row:row.source_row,label:&row.label,value_kind:&row.value_kind,value_cents:row.value_cents
+ }).collect::<Vec<_>>();
+ let rubric_review=rubric_review::analyze(&inputs);
+ Ok(Some(SourceView{period:period.into(),filename,sha256,source_month_label,revenue_cents,confirmation,rows,rubric_review}))
 }
 #[cfg(test)]
 mod tests{
@@ -146,7 +151,11 @@ mod tests{
   let rows=(1..=40).map(|n|SourceRow{source_row:n,label:if n==7{"Receita Total".into()}else{format!("Linha {n}")},raw_auxiliary:String::new(),raw_value:format!("{n}"),value_cents:if n==7{Some(revenue)}else{Some(n as i64)},value_kind:"MONETARIO".into()}).collect();
   let source=ParsedSource{file:importer::OriginalFile{filename:"exemplo-sintetico.xlsx".into(),raw_bytes:raw,sha256:sha},source_month_label:"Agosto".into(),revenue_cents:revenue,rows};
   save(&mut db,"2026-09",source).unwrap();
-  assert_eq!(load(&db,"2026-09").unwrap().unwrap().rows.len(),40);
+  let loaded=load(&db,"2026-09").unwrap().unwrap();
+  assert_eq!(loaded.rows.len(),40);
+  assert_eq!(loaded.rubric_review.recognized,1);
+  assert_eq!(loaded.rubric_review.not_classified,35);
+  assert_eq!(loaded.rubric_review.review_required,4);
   let another_bytes=vec![5,6,7,8];
   let another_sha=format!("{:x}",Sha256::digest(&another_bytes));
   let duplicate=ParsedSource{
