@@ -95,3 +95,11 @@
 - **Decisão:** adicionar ao workflow privado jobs de compilação Linux e Windows com `cargo test`, testes TypeScript/React, SQLite e `tauri build --no-bundle --ci`; separar build bem-sucedido de homologação manual da janela e preservar confidencialidade das fixtures.
 - **Consequências:** não há dependência de servidor para executar o aplicativo; CI requer acesso a registries e runner com bibliotecas oficiais; sem lockfiles a primeira compilação ainda não é reprodutível.
 - **Pendente:** executar workflow, corrigir quaisquer erros reais revelados, versionar lockfiles e executar testes de aceitação desktop.
+
+## ADR — Desktop com arquitetura preparada para SaaS (2026-10-14)
+- **Status:** accepted como diretriz; desacoplamentos de código ainda pendentes.
+- **Origem:** decisão expressa do responsável após homologação da base e importação DRE setembro/2026 no Windows.
+- **Decisão:** manter Tauri 2 + Rust + SQLite offline; organizar novas regras e casos de uso para não dependerem diretamente de Tauri e do banco, com interfaces mínimas e extração incremental. SaaS, autenticação remota, multi-tenant e PostgreSQL permanecem fora do escopo atual.
+- **Regra financeira:** preservar o espelho documental imutável da DRE e impedir transferência/soma automática de despesas, CMV, impostos, royalties ou folha na camada operacional; proveniência e deduplicação explícitas na integração futura.
+- **Documento completo:** [ADR_DESKTOP_SAAS_READY_2026_10.md](ADR_DESKTOP_SAAS_READY_2026_10.md).
+- **Impacto desta decisão:** documentação somente; nenhuma alteração em código, migrations, binários ou bancos.
