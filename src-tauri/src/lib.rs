@@ -9,6 +9,7 @@ mod expenses;
 mod financial_rules;
 mod financial_parameters;
 mod dre_workbook;
+mod rubric_review;
 
 use rusqlite::Connection;
 use std::{path::PathBuf, sync::Mutex};

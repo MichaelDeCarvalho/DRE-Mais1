@@ -161,7 +161,7 @@ export function App() {
   const [expenseRows,setExpenseRows] = useState<Array<{id:number;period:string;expenseKind:string;category:string;description:string;amountCents:number;reference:string}>>([]);
   const [dreBusy,setDreBusy] = useState(false);
   const [dreError,setDreError] = useState('');
-  type DreWorkbookSource={period:string;filename:string;sha256:string;sourceMonthLabel:string;revenueCents:number;confirmation:string;rows:Array<{sourceRow:number;label:string;rawAuxiliary:string;rawValue:string;valueCents:number|null;valueKind:string}>};
+  type DreWorkbookSource={period:string;filename:string;sha256:string;sourceMonthLabel:string;revenueCents:number;confirmation:string;rows:Array<{sourceRow:number;label:string;rawAuxiliary:string;rawValue:string;valueCents:number|null;valueKind:string}>;rubricReview:{recognized:number;notClassified:number;reviewRequired:number;rows:Array<{sourceRow:number;role:string;status:string;postingPolicy:string}>}};
   const [dreWorkbook,setDreWorkbook]=useState<DreWorkbookSource|null>(null);
   const [dreWorkbookBusy,setDreWorkbookBusy]=useState(false);
   const [dreWorkbookMessage,setDreWorkbookMessage]=useState('');
@@ -462,6 +462,29 @@ export function App() {
       finally{setDreWorkbookBusy(false);}
     }catch(e){setDreWorkbookError(explainError(e));}
   }
+  function rubricRole(role:string):string{
+    const roles:Record<string,string>={
+      RECEITA_DOCUMENTAL:'Receita documental',
+      AJUSTE_DE_RECEITA:'Desconto / ajuste de receita',
+      SUBTOTAL_VARIAVEIS:'Subtotal de despesas variáveis',
+      COMPONENTE_TRIBUTO:'Componente: tributo',
+      COMPONENTE_ROYALTIES:'Componente: royalties',
+      SUBTOTAL_FIXAS:'Subtotal de despesas fixas',
+      COMPONENTE_FOLHA:'Componente: folha',
+      RESULTADO_DOCUMENTAL:'Resultado informado',
+      SEM_CLASSIFICACAO:'Classificação futura',
+    };
+    return roles[role]??'Rubrica não reconhecida';
+  }
+  function rubricStatus(status:string):string{
+    const statuses:Record<string,string>={
+      RECONHECIDA:'Referência reconhecida',
+      NAO_CLASSIFICADA:'Sem associação gerencial',
+      ROTULO_DIVERGENTE:'Conferir rótulo',
+      VALOR_NAO_MONETARIO_OU_AUSENTE:'Conferir valor',
+    };
+    return statuses[status]??'Conferir classificação';
+  }
   function sourceValue(row:DreWorkbookSource['rows'][number]){
     if(row.valueKind==='MONETARIO'&&row.valueCents!==null)return brl(row.valueCents);
     if(row.valueKind==='PERCENTUAL'&&Number.isFinite(Number(row.rawValue)))return (Number(row.rawValue)*100).toFixed(2)+'%';
@@ -679,16 +702,25 @@ export function App() {
             </div>
             <p className="footnote">Valores exatamente referenciados pelas células da planilha confirmada pelo responsável. O resultado informado não é um segundo cálculo de lucro; despesas, impostos e CMV não são somados novamente. A prévia operacional permanece independente até sua conciliação.</p>
             <div className="feedback feedback-info" role="status">
+              <strong>Pré-mapeamento documental de rubricas — somente leitura</strong>
+              <p>{dreWorkbook.rubricReview.recognized} rubrica(s) prioritárias reconhecidas · {dreWorkbook.rubricReview.notClassified} rubrica(s) ainda sem classificação gerencial · {dreWorkbook.rubricReview.reviewRequired} célula(s) a conferir.</p>
+              <p>Reconhecer uma rubrica não a vincula a uma despesa nem cria lançamento. Subtotais, tributos, royalties, folha e resultado permanecem referências do arquivo original.</p>
+            </div>
+            <div className="feedback feedback-info" role="status">
               <strong>Arquivo preservado: {dreWorkbook.filename} · {periodLabel(dreWorkbook.period)}</strong>
               <p>Receita de referência: {brl(dreWorkbook.revenueCents)} · {dreWorkbook.rows.length} rubricas · SHA-256: <code>{dreWorkbook.sha256.slice(0,12)}…</code>.</p>
               <p>Rótulo de mês no arquivo: {dreWorkbook.sourceMonthLabel||'Não informado'}. Preservado sem ajustar os valores.</p>
             </div>
             <div className="scroll-table" aria-label="Valores originais validados da DRE">
-              <table><thead><tr><th>Célula</th><th>Rubrica</th><th>Valor de referência</th><th>Auxiliar C</th><th>Tipo</th></tr></thead>
-                <tbody>{dreWorkbook.rows.map(row=><tr key={row.sourceRow}>
-                  <td className="mono">D{row.sourceRow}</td><td>{row.label}</td><td className="num">{sourceValue(row)}</td>
-                  <td>{row.rawAuxiliary||'—'}</td><td>{row.valueKind==='MONETARIO'?'Monetário':row.valueKind==='PERCENTUAL'?'Percentual':row.valueKind==='SEM_VALOR'?'Sem valor':'Texto'}</td>
-                </tr>)}</tbody>
+              <table><thead><tr><th>Célula</th><th>Rubrica</th><th>Valor de referência</th><th>Auxiliar C</th><th>Tipo</th><th>Papel documental</th><th>Situação</th></tr></thead>
+                <tbody>{dreWorkbook.rows.map(row=>{
+                  const review=dreWorkbook.rubricReview.rows.find(item=>item.sourceRow===row.sourceRow);
+                  return <tr key={row.sourceRow}>
+                    <td className="mono">D{row.sourceRow}</td><td>{row.label}</td><td className="num">{sourceValue(row)}</td>
+                    <td>{row.rawAuxiliary||'—'}</td><td>{row.valueKind==='MONETARIO'?'Monetário':row.valueKind==='PERCENTUAL'?'Percentual':row.valueKind==='SEM_VALOR'?'Sem valor':'Texto'}</td>
+                    <td>{rubricRole(review?.role??'')}</td><td>{rubricStatus(review?.status??'')}</td>
+                  </tr>;
+                })}</tbody>
               </table>
             </div>
             <p className="footnote">Arquivo original preservado. Esta tabela é uma referência documental; totais, subtotais e percentuais não constituem lançamentos independentes.</p>
