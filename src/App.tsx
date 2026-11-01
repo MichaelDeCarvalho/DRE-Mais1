@@ -10,6 +10,7 @@ import type { Store } from './supabase/types';
 import { fetchStorePeriods, createStorePeriod, type PeriodRecord } from './services/saasApi';
 import { previewXlsxFiles, type MonthlyImportPreview } from './importPreview';
 import { ArchivedReportHomologation } from './components/ArchivedReportHomologation';
+import { planPeriodSelection } from './periodSelection';
 
 async function invoke<T>(_cmd: string, _args?: unknown): Promise<T> {
   throw new Error('Operação SaaS em desenvolvimento no backend Supabase PostgreSQL.');
@@ -149,6 +150,22 @@ export function App() {
     }
   }
 
+  function handleSelectStoredPeriod(stored: PeriodRecord) {
+    const selection = planPeriodSelection(stored, period);
+    // Trocar de competência deve invalidar arquivos, prévias e resultados do mês anterior.
+    // Selecionar novamente a mesma competência não apaga o que já foi escolhido.
+    if (selection.changed) clearPeriodViews(true);
+    setYear(selection.year);
+    setMonth(selection.month);
+    setViewedPeriod(stored.year_month);
+    setPeriodNotice(selection.notice);
+    // Mesmo quando setembro já é o mês inicial, o clique precisa produzir
+    // uma navegação visível para a próxima ação, sem criar competência duplicada.
+    requestAnimationFrame(() => document.getElementById(
+      selection.canArchive ? 'upload-heading' : 'period-heading'
+    )?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
   async function handleCreatePeriodInSupabase() {
     if (!currentStore || periodCreating) return;
     setPeriodCreating(true);
@@ -244,6 +261,8 @@ export function App() {
   const [ingredientInfo, setIngredientInfo] = useState('');
   const [ingredientBusy, setIngredientBusy] = useState(false);
   const period = `${year}-${month}`;
+  const selectedStoredPeriod = storedPeriods.find(p => p.year_month === period);
+  const alreadyRegistered = Boolean(selectedStoredPeriod);
   const [mappingSaving, setMappingSaving] = useState(false);
   const busy = pending || catalogLoading || dialogBusy || mappingSaving || recipeBusy || ingredientBusy || costBusy || salePriceBusy || dreBusy || expenseBusy || paramBusy || dreWorkbookBusy;
   const canSubmit = /^20\d\d$/.test(year) && Boolean(productsFile && paymentsFile) && !busy;
@@ -570,11 +589,11 @@ export function App() {
             <label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy || periodCreating} onChange={(e) => { setYear(e.target.value); setImportPreview(null); }} aria-label="Ano" /></label>
             <label>Mês<select value={month} disabled={busy || periodCreating} onChange={(e) => { setMonth(e.target.value); setImportPreview(null); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label>
             <div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div>
-            <button type="button" className="primary-button" disabled={busy || periodCreating || !/^20\d\d$/.test(year)} onClick={handleCreatePeriodInSupabase}>
-              {periodCreating ? 'Persistindo no PostgreSQL…' : 'Criar Competência no Supabase'}
+            <button type="button" className="primary-button" disabled={busy || periodCreating || alreadyRegistered || !/^20\d\d$/.test(year)} onClick={handleCreatePeriodInSupabase}>
+              {periodCreating ? 'Persistindo no PostgreSQL…' : alreadyRegistered ? 'Competência já cadastrada' : 'Criar Competência no Supabase'}
             </button>
           </div>
-          {periodNotice && <div className={periodNotice.includes('sucesso') ? 'feedback feedback-info' : 'feedback feedback-error'} role="status"><p>{periodNotice}</p></div>}
+          {periodNotice && <div className={periodNotice.includes('selecionada') || periodNotice.includes('sucesso') ? 'feedback feedback-info' : 'feedback feedback-error'} role="status"><p>{periodNotice}</p></div>}
           
           <div style={{ marginTop: '20px', borderTop: '1px solid var(--app-border, #304158)', paddingTop: '16px' }}>
             <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: 'var(--app-text, #fff)' }}>
@@ -588,17 +607,14 @@ export function App() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => {
-                      const [y, m] = p.year_month.split('-');
-                      setYear(y);
-                      setMonth(m);
-                      setViewedPeriod(p.year_month);
-                    }}
+                    onClick={() => handleSelectStoredPeriod(p)}
+                    aria-pressed={viewedPeriod === p.year_month}
+                    aria-label={`Selecionar competência ${periodLabel(p.year_month)} (${p.status})`}
                     style={{
                       padding: '6px 12px',
                       borderRadius: '6px',
-                      border: p.year_month === period ? '1px solid #42c9b5' : '1px solid var(--app-border, #304158)',
-                      background: p.year_month === period ? '#167d73' : 'var(--app-field, #202e42)',
+                      border: viewedPeriod === p.year_month ? '2px solid #42c9b5' : '1px solid var(--app-border, #304158)',
+                      background: viewedPeriod === p.year_month ? '#167d73' : 'var(--app-field, #202e42)',
                       color: '#fff',
                       fontSize: '12px',
                       cursor: 'pointer'
@@ -627,6 +643,14 @@ export function App() {
         </section>
         <section className="section-block" aria-labelledby="upload-heading">
           <div className="section-heading"><span className="step">02</span><div><h2 id="upload-heading">Pré-validação dos relatórios mensais</h2><p>Os arquivos são analisados temporariamente neste navegador. Esta etapa não envia nem grava dados no Supabase.</p></div></div>
+          {viewedPeriod === period && selectedStoredPeriod && (
+            <div className="feedback feedback-info" role="status">
+              <strong>Competência selecionada: {periodLabel(selectedStoredPeriod.year_month)} ({selectedStoredPeriod.status})</strong>
+              <p>{selectedStoredPeriod.status === 'DRAFT'
+                ? 'Para continuar, selecione abaixo os dois arquivos XLSX e clique em “Validar arquivos sem gravar”. Você não precisa cadastrar a competência novamente.'
+                : 'Competência cadastrada. O arquivamento de novos XLSX só é permitido enquanto estiver em DRAFT.'}</p>
+            </div>
+          )}
           <input type="file" accept=".xlsx" ref={productInputRef} style={{ display: 'none' }} aria-label="Arquivo XLSX de produtos" onChange={e => { handleSelectedFile('products', e.currentTarget.files?.[0] || null); e.currentTarget.value = ''; }} />
           <input type="file" accept=".xlsx" ref={paymentInputRef} style={{ display: 'none' }} aria-label="Arquivo XLSX de pagamentos" onChange={e => { handleSelectedFile('payments', e.currentTarget.files?.[0] || null); e.currentTarget.value = ''; }} />
           <div className="file-grid">
