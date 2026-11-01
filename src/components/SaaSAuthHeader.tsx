@@ -1,18 +1,14 @@
 import { useState, useEffect } from 'react';
-import { supabase, isSupabaseConfigured, getCurrentSession, getDemoSession, testSupabaseConnection } from '../supabase/client';
+import { supabase, isSupabaseConfigured, getCurrentSession, testSupabaseConnection } from '../supabase/client';
 import type { UserSession, Store } from '../supabase/types';
 import { SaaSAuthModal } from './SaaSAuthModal';
 
-export type AppMode = 'SAAS' | 'DEMO' | 'DESKTOP';
-
 interface SaaSAuthHeaderProps {
   onStoreChange: (store: Store | null) => void;
-  onModeChange: (mode: AppMode) => void;
 }
 
-export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderProps) {
+export function SaaSAuthHeader({ onStoreChange }: SaaSAuthHeaderProps) {
   const [session, setSession] = useState<UserSession | null>(null);
-  const [mode, setMode] = useState<AppMode>('SAAS');
   const [userStores, setUserStores] = useState<Store[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -23,7 +19,6 @@ export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderPr
     setSession(sess);
 
     if (sess.user && supabase) {
-      // Fetch user's authorized stores
       const { data: memberships } = await supabase
         .from('store_memberships')
         .select('store_id, store:stores(*)')
@@ -66,24 +61,6 @@ export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderPr
     }
   }
 
-  function handleToggleDemoMode() {
-    if (mode === 'DEMO') {
-      setMode('SAAS');
-      onModeChange('SAAS');
-      loadUserSession();
-    } else {
-      setMode('DEMO');
-      onModeChange('DEMO');
-      const demoSess = getDemoSession();
-      setSession(demoSess);
-      setUserStores(demoSess.store ? [demoSess.store] : []);
-      if (demoSess.store) {
-        setSelectedStoreId(demoSess.store.id);
-        onStoreChange(demoSess.store);
-      }
-    }
-  }
-
   async function handleSignOut() {
     if (supabase) {
       await supabase.auth.signOut();
@@ -95,42 +72,6 @@ export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderPr
 
   return (
     <>
-      {/* Prominent banner if in Demo Mode */}
-      {mode === 'DEMO' && (
-        <div style={{
-          background: '#854d0e',
-          color: '#fef08a',
-          padding: '8px 16px',
-          textAlign: 'center',
-          fontSize: '12px',
-          fontWeight: 700,
-          letterSpacing: '0.5px',
-          borderBottom: '1px solid #a16207',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px'
-        }}>
-          <span>⚠️ MODO DEMONSTRAÇÃO ISOLADO — DADOS SINTÉTICOS DE SETEMBRO/2026 (SEM CONEXÃO COM BANCO DE PRODUÇÃO)</span>
-          <button
-            type="button"
-            onClick={handleToggleDemoMode}
-            style={{
-              background: '#fef08a',
-              color: '#713f12',
-              border: 0,
-              padding: '3px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer'
-            }}
-          >
-            Sair do modo Demo
-          </button>
-        </div>
-      )}
-
       <div className="saas-header-bar" style={{
         background: 'var(--app-surface, #172233)',
         borderBottom: '1px solid var(--app-border, #304158)',
@@ -144,7 +85,7 @@ export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderPr
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{
-              background: mode === 'DEMO' ? '#a16207' : '#167d73',
+              background: '#167d73',
               color: '#fff',
               fontSize: '10px',
               fontWeight: 800,
@@ -152,7 +93,7 @@ export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderPr
               borderRadius: '4px',
               letterSpacing: '0.5px'
             }}>
-              {mode === 'DEMO' ? 'MODO DEMO' : 'SaaS ONLINE'}
+              SaaS ONLINE
             </span>
             <strong style={{ color: 'var(--app-text, #fff)', fontSize: '14px' }}>
               {session?.organization?.name || 'DRE Mais1 SaaS'}
@@ -232,25 +173,6 @@ export function SaaSAuthHeader({ onStoreChange, onModeChange }: SaaSAuthHeaderPr
               }}
             >
               Entrar / Cadastrar
-            </button>
-          )}
-
-          {mode !== 'DEMO' && (
-            <button
-              type="button"
-              onClick={handleToggleDemoMode}
-              title="Ativar modo de demonstração com dados sintéticos"
-              style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: '1px solid var(--app-border, #304158)',
-                background: 'var(--app-soft, #223146)',
-                color: 'var(--app-muted, #a9b8cb)',
-                fontSize: '11px',
-                cursor: 'pointer'
-              }}
-            >
-              Modo Demo
             </button>
           )}
         </div>

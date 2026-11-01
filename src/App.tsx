@@ -7,7 +7,7 @@ import { parseQuantityMilliBase } from './quantity';
 import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
 import { validatedDreMetrics } from './dre_reference';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
-import { SaaSAuthHeader, type AppMode } from './components/SaaSAuthHeader';
+import { SaaSAuthHeader } from './components/SaaSAuthHeader';
 import type { Store } from './supabase/types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
@@ -27,7 +27,6 @@ function initialTheme(): ThemePreference {
 }
 export function App() {
   const [currentStore, setCurrentStore] = useState<Store | null>(null);
-  const [appMode, setAppMode] = useState<AppMode>('SAAS');
   const [themePreference, setThemePreference] = useState<ThemePreference>(initialTheme);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true);
   const [activeSection, setActiveSection] = useState('period-heading');
@@ -491,10 +490,9 @@ export function App() {
     <>
       <SaaSAuthHeader
         onStoreChange={(store) => setCurrentStore(store)}
-        onModeChange={(mode) => setAppMode(mode)}
       />
 
-      {appMode === 'SAAS' && !currentStore ? (
+      {!currentStore ? (
         <div style={{
           minHeight: 'calc(100vh - 60px)',
           background: 'var(--app-bg, #0d1420)',
@@ -539,7 +537,7 @@ export function App() {
       ) : (
       <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>{appMode === 'DEMO' ? 'Modo Demonstração' : 'Gestão Financeira SaaS'}</small></div></div>
+        <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>Gestão Financeira SaaS</small></div></div>
         <nav aria-label="Navegação principal" className="app-nav">
           {[
             ['period-heading','Competência'],['catalog-heading','Catálogo'],['ingredient-heading','Insumos'],['recipe-heading','Fichas técnicas'],
@@ -547,10 +545,10 @@ export function App() {
             ['parameters-heading','Parâmetros financeiros'],['validated-dre-heading','DRE da planilha'],['appearance-heading','Aparência'],
           ].map(([id,label]) => <button key={id} type="button" className={activeSection === id ? 'nav-link nav-active' : 'nav-link'} onClick={() => navigate(id)}>{label}</button>)}
         </nav>
-        <div className="sidebar-bottom"><span className="status-dot" /> {appMode === 'DEMO' ? 'Dados Sintéticos Demonstrativos' : `Loja: ${currentStore?.display_name || 'Autorizada'}`} <small>DRE em validação · Fechamento auditável</small></div>
+        <div className="sidebar-bottom"><span className="status-dot" /> {`Loja: ${currentStore?.display_name || 'Autorizada'}`} <small>DRE em validação · Fechamento auditável</small></div>
       </aside>
       <main className="content">
-        <header className="page-header"><div><span className="eyebrow">{appMode === 'DEMO' ? 'DEMONSTRAÇÃO ISOLADA' : 'VISÃO GERENCIAL SAAS'}</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas por competência e loja. Fechamento gerencial auditável.</p></div><div className="header-tag">{currentStore ? `Loja: ${currentStore.display_name}` : 'Unidade Franquia'}</div></header>
+        <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL SAAS</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas por competência e loja. Fechamento gerencial auditável.</p></div><div className="header-tag">{currentStore ? `Loja: ${currentStore.display_name}` : 'Unidade Franquia'}</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
           <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { clearPeriodViews(true); setYear(e.target.value); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { clearPeriodViews(true); setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="primary-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>{pending?'Consultando todos os módulos…':'Consultar competência'}</button></div>
