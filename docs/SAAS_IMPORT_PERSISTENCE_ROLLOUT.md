@@ -9,6 +9,8 @@
 - Migration aditiva, **APLICADA em 01/11/2026 somente à homologação** (versão `20261101194253`), criando bucket privado `dre-mais1-report-archives` para os bytes originais de ambos os XLSX.
 - Política de upload: papel autenticado com acesso gerencial à mesma loja e competência `DRAFT`, caminho `store_uuid/period_uuid/PRODUCTS|PAYMENTS/sha256.xlsx`, limite 20 MiB, sem update/delete no fluxo comum.
 - Política de leitura: membro autorizado da loja, por RLS.
+- Antes de arquivar qualquer arquivo, `stageMonthlyReportFiles` agora executa `previewXlsxFiles` sobre os dois XLSX usando a competência `year_month` lida do PostgreSQL (não informada pelo navegador). Layout, período e valores inválidos impedem o upload. Pré-validação do navegador **não** substitui a análise autoritativa do backend.
+- Testes de regressão simulam mês incompatível e cabeçalho de produto inválido, exigindo zero chamadas ao Storage.
 - Gravação direta das linhas via Data API **continua bloqueada**.
 
 
@@ -41,3 +43,9 @@
 - Testar em ambiente de homologação; não publicar/mesclar antes de confirmar migration, RLS, testes de negativo, CI e fluxo real de reabertura.
 
 **Status:** SQL de arquivamento preparado em PR. Importação persistente: não implementada, nem validada em banco. Nenhum arquivo financeiro de produção deve ser importado nesta fase.
+
+
+## Continuidade técnica — 01/11/2026
+- A branch da PR #5 valida o conteúdo do par de relatórios antes do primeiro upload, sem modificar política RLS nem migration previamente aplicada na homologação.
+- Código da interface continua sem invocar o arquivamento; não existe persistência financeira/CMV/DRE nesta entrega.
+- Próximo bloqueio: parser do backend sobre bytes do Storage, hash verificado, autorização e transação SQL atômica. Testes HTTP reais e concorrência ainda necessários.
