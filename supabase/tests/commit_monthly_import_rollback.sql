@@ -5,6 +5,8 @@ DECLARE
  v_store uuid := 'a90a2118-6f5e-4dc2-8548-32de70ce3c20';
  v_period uuid := 'a01f4767-6cc4-4eff-8170-0c23f6c77c4c';
  v_actor uuid;
+ v_alt_period uuid;
+ v_alt_pf jsonb; v_alt_ff jsonb; v_alt_payments jsonb;
  v_pf jsonb; v_ff jsonb; v_products jsonb; v_payments jsonb;
  v_a jsonb; v_b jsonb;
 BEGIN
@@ -96,5 +98,43 @@ BEGIN
    RAISE EXCEPTION 'Troca divergente não recusada';
  EXCEPTION WHEN unique_violation THEN NULL;
  END;
+
+ -- Divergência é registrada sem fechamento: teste em competência sintética 2026-08,
+ -- também desfeita por ROLLBACK externo.
+ INSERT INTO public.periods(store_id,year_month,status)
+ VALUES (v_store,'2026-08','DRAFT') RETURNING id INTO v_alt_period;
+ v_alt_pf := jsonb_build_object(
+   'path',v_store||'/'||v_alt_period||'/PRODUCTS/'||repeat('c',64)||'.xlsx',
+   'sha256',repeat('c',64),'filename','produtos-ago.xlsx','sizeBytes',1234);
+ v_alt_ff := jsonb_build_object(
+   'path',v_store||'/'||v_alt_period||'/PAYMENTS/'||repeat('d',64)||'.xlsx',
+   'sha256',repeat('d',64),'filename','pagamentos-ago.xlsx','sizeBytes',456);
+ v_alt_payments := jsonb_build_array(
+   jsonb_set(jsonb_set(v_payments->0,'{detectedPeriod}','"2026-08"'::jsonb),
+     '{valueCents}','700'::jsonb)
+ );
+ INSERT INTO storage.objects(bucket_id,name) VALUES
+ ('dre-mais1-report-archives',v_alt_pf->>'path'),
+ ('dre-mais1-report-archives',v_alt_ff->>'path');
+ v_b := public.commit_monthly_import_v1(v_actor,v_store,v_alt_period,
+   v_alt_pf,v_alt_ff,v_products,v_alt_payments);
+ IF v_b->>'state'<>'IMPORTED_DIVERGENT' OR (v_b->>'differenceCents')::bigint<>100
+    OR (SELECT status FROM public.periods WHERE id=v_alt_period)<>'DIVERGENTE' THEN
+    RAISE EXCEPTION 'Divergência não sinalizada corretamente: %',v_b;
+ END IF;
+ IF (public.commit_monthly_import_v1(v_actor,v_store,v_alt_period,
+   v_alt_pf,v_alt_ff,v_products,v_alt_payments))->>'state'<>'ALREADY_IMPORTED' THEN
+   RAISE EXCEPTION 'Repetição idempotente divergente falhou';
+ END IF;
+ -- Mesmo com objetos existentes, um caminho divergente da competência
+ -- ou SHA incorreto precisa ser rejeitado antes de qualquer commit.
+ BEGIN
+   PERFORM public.commit_monthly_import_v1(v_actor,v_store,v_period,
+     jsonb_set(v_pf,'{sha256}','"not-a-hash"'::jsonb),
+     v_ff,v_products,v_payments);
+   RAISE EXCEPTION 'SHA inválido aceito';
+ EXCEPTION WHEN invalid_parameter_value THEN NULL;
+ END;
+
  RAISE NOTICE 'PASS: permissions, atomic rows, period status, idempotency, rejection';
 END $test$;
