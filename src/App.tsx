@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { brl, periodLabel } from './format';
-import { consultPeriodModules, nextCompetence } from './competence';
+import { nextCompetence } from './competence';
 import { parseQuantityMilliBase } from './quantity';
 import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
 import { validatedDreMetrics } from './dre_reference';
@@ -469,44 +469,6 @@ export function App() {
       cancelParameterEdit();
       setPeriodNotice('Competência alterada. Clique em Consultar competência para carregar os dados de todos os módulos.');
     }
-  }
-  async function refreshPeriod(reference:string){
-    const records=await consultPeriodModules(reference,(command,args)=>invoke(command,args));
-    const summary=records.load_period_summary;
-    if(summary.status==='fulfilled')setResult(summary.value as ImportSummary);
-    else setError(`Conciliação indisponível para ${reference}: ${explainError(summary.reason)}`);
-
-    const ingredientResult=records.list_ingredients;
-    if(ingredientResult.status==='fulfilled')setIngredients(ingredientResult.value as typeof ingredients);
-    else setIngredientError(explainError(ingredientResult.reason));
-
-    const costs=records.monthly_cost_overview;
-    if(costs.status==='fulfilled')setCostRows(costs.value as typeof costRows);
-    else setCostError(explainError(costs.reason));
-
-    const cmv=records.monthly_cmv_summary;
-    if(cmv.status==='fulfilled')setCmvSummary(cmv.value as typeof cmvSummary);
-    else setCostError(previous=>[previous,explainError(cmv.reason)].filter(Boolean).join(' · '));
-
-    const dre=records.get_dre_preview;
-    if(dre.status==='fulfilled')setDrePreview(dre.value as typeof drePreview);
-    else setDreError(explainError(dre.reason));
-
-    const expenses=records.list_expenses;
-    if(expenses.status==='fulfilled')setExpenseRows(expenses.value as typeof expenseRows);
-    else setExpenseError(explainError(expenses.reason));
-
-    const params=records.list_financial_parameters;
-    if(params.status==='fulfilled')setParameters(params.value as FinancialParameter[]);
-    else setParamMessage(explainError(params.reason));
-    const dreReferenceResult=records.get_validated_dre_workbook;
-    if(dreReferenceResult.status==='fulfilled')setDreWorkbook(dreReferenceResult.value as DreWorkbookSource|null);
-    else setDreWorkbookError(explainError(dreReferenceResult.reason));
-    const errors=Object.values(records).filter(item=>item.status==='rejected').length;
-    setViewedPeriod(reference);
-    setPeriodNotice(errors===0
-      ? `Competência ${periodLabel(reference)} atualizada em todos os módulos.`
-      : `Competência ${periodLabel(reference)} consultada. ${errors} módulo(s) sem dados ou com pendência; confira os avisos nas seções correspondentes.`);
   }
   async function importValidatedDreWorkbook(){
     if(busy||!/^20\d\d$/.test(year))return;
