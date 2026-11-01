@@ -42,9 +42,9 @@ BEGIN
   jsonb_build_object('sourceSheet','Pagamentos','sourceRow',2,'rawCells',jsonb_build_array('09/2026 - PIX',8),
   'methodRaw','09/2026 - PIX','methodNormalized','PIX','entryType','STANDARD','detectedPeriod','2026-09','valueCents',800)
  );
- INSERT INTO storage.objects(bucket_id,name) VALUES
- ('dre-mais1-report-archives',v_pf->>'path'),
- ('dre-mais1-report-archives',v_ff->>'path');
+ INSERT INTO storage.objects(bucket_id,name,metadata) VALUES
+ ('dre-mais1-report-archives',v_pf->>'path',jsonb_build_object('size',1234)),
+ ('dre-mais1-report-archives',v_ff->>'path',jsonb_build_object('size',456));
  BEGIN
    PERFORM public.commit_monthly_import_v1('00000000-0000-0000-0000-000000000001',
      v_store,v_period,v_pf,v_ff,v_products,v_payments);
@@ -113,9 +113,9 @@ BEGIN
    jsonb_set(jsonb_set(v_payments->0,'{detectedPeriod}','"2026-08"'::jsonb),
      '{valueCents}','700'::jsonb)
  );
- INSERT INTO storage.objects(bucket_id,name) VALUES
- ('dre-mais1-report-archives',v_alt_pf->>'path'),
- ('dre-mais1-report-archives',v_alt_ff->>'path');
+ INSERT INTO storage.objects(bucket_id,name,metadata) VALUES
+ ('dre-mais1-report-archives',v_alt_pf->>'path',jsonb_build_object('size',1234)),
+ ('dre-mais1-report-archives',v_alt_ff->>'path',jsonb_build_object('size',456));
  v_b := public.commit_monthly_import_v1(v_actor,v_store,v_alt_period,
    v_alt_pf,v_alt_ff,v_products,v_alt_payments);
  IF v_b->>'state'<>'IMPORTED_DIVERGENT' OR (v_b->>'differenceCents')::bigint<>100
