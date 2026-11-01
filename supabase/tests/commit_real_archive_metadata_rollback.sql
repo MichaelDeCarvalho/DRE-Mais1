@@ -67,6 +67,33 @@ BEGIN
     'detectedPeriod','2026-09','valueCents',CASE WHEN i=1 THEN 2494463 ELSE 0 END
   ) ORDER BY i) INTO v_payments FROM generate_series(1,9) AS i;
 
+  -- Contrato reforçado: metadados alterados ou linhas sem centavos NÃO entram.
+  BEGIN
+    PERFORM public.commit_monthly_import_v1(v_actor,v_store,v_period,
+      jsonb_set(v_products_file,'{sizeBytes}',to_jsonb(1)),
+      v_payments_file,v_products,v_payments);
+    RAISE EXCEPTION 'Tamanho diferente do Storage foi aceito';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.commit_monthly_import_v1(v_actor,v_store,v_period,
+      v_products_file,v_payments_file,
+      jsonb_set(v_products,'{0,valueCents}','null'::jsonb),v_payments);
+    RAISE EXCEPTION 'Linha sem valor em centavos foi aceita';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.commit_monthly_import_v1(v_actor,v_store,v_period,
+      v_products_file,v_payments_file,v_products,
+      jsonb_set(v_payments,'{0,valueCents}','-1'::jsonb));
+    RAISE EXCEPTION 'Pagamento negativo foi aceito';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.imports WHERE period_id=v_period)
+     OR (SELECT status FROM public.periods WHERE id=v_period)<>'DRAFT' THEN
+    RAISE EXCEPTION 'Falha de validação deixou registros';
+  END IF;
+
   v_result := public.commit_monthly_import_v1(v_actor,v_store,v_period,
     v_products_file,v_payments_file,v_products,v_payments);
   IF v_result->>'state'<>'IMPORTED'
