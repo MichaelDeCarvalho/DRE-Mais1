@@ -1,0 +1,8 @@
+{
+  "name": "DRE Mais1",
+  "description": "Importação mensal, conciliação e apuração de DRE e CMV para franquias Mais1 Café.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
