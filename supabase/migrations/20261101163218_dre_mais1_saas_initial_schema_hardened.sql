@@ -466,3 +466,84 @@ CREATE POLICY "rule_versions_delete" ON public.financial_rule_versions FOR DELET
 CREATE POLICY "dre_ref_select" ON public.dre_workbook_references FOR SELECT USING (app_security.has_store_access(store_id));
 CREATE POLICY "dre_ref_insert" ON public.dre_workbook_references FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
 CREATE POLICY "dre_ref_delete" ON public.dre_workbook_references FOR DELETE USING (app_security.has_admin_role(store_id));
+
+
+-- ============================================================================
+-- 6. HARDENING APLICADO NA HOMOLOGACAO: permissões mínimas e integridade por loja
+-- ============================================================================
+
+-- Revoga EXECUTE público sobre a função EVENT TRIGGER de RLS automático,
+-- preservando a própria função e o gatilho.
+REVOKE ALL PRIVILEGES ON FUNCTION public.rls_auto_enable() FROM PUBLIC, anon, authenticated;
+
+ALTER FUNCTION app_security.has_store_access(UUID) SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION app_security.get_user_store_role(UUID) SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION app_security.has_manager_role(UUID) SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION app_security.has_admin_role(UUID) SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION app_security.bootstrap_organization(TEXT, TEXT, TEXT, TEXT, UUID) SET search_path = pg_catalog, pg_temp;
+REVOKE USAGE ON SCHEMA app_security FROM PUBLIC, anon;
+
+-- Identidades devem existir no Supabase Auth.
+ALTER TABLE public.store_memberships
+ ADD CONSTRAINT store_memberships_auth_user_fk FOREIGN KEY (user_id)
+ REFERENCES auth.users(id) ON DELETE RESTRICT;
+
+-- FKs compostas reforçam consistência entre entidades da mesma organização/loja.
+ALTER TABLE public.stores ADD CONSTRAINT stores_id_org_unique UNIQUE (id, organization_id);
+ALTER TABLE public.periods ADD CONSTRAINT periods_id_store_unique UNIQUE (id, store_id);
+ALTER TABLE public.products ADD CONSTRAINT products_id_store_unique UNIQUE (id, store_id);
+ALTER TABLE public.ingredients ADD CONSTRAINT ingredients_id_store_unique UNIQUE (id, store_id);
+ALTER TABLE public.imports ADD CONSTRAINT imports_id_store_unique UNIQUE (id, store_id);
+ALTER TABLE public.recipe_versions ADD CONSTRAINT recipe_versions_id_store_unique UNIQUE (id, store_id);
+
+ALTER TABLE public.store_memberships ADD CONSTRAINT memberships_store_org_fk
+ FOREIGN KEY (store_id, organization_id) REFERENCES public.stores(id, organization_id);
+ALTER TABLE public.product_external_codes ADD CONSTRAINT external_codes_product_store_fk
+ FOREIGN KEY (product_id, store_id) REFERENCES public.products(id, store_id);
+ALTER TABLE public.imports ADD CONSTRAINT imports_period_store_fk
+ FOREIGN KEY (period_id, store_id) REFERENCES public.periods(id, store_id);
+ALTER TABLE public.import_product_rows ADD CONSTRAINT import_product_rows_import_store_fk
+ FOREIGN KEY (import_id, store_id) REFERENCES public.imports(id, store_id);
+ALTER TABLE public.import_payment_rows ADD CONSTRAINT import_payment_rows_import_store_fk
+ FOREIGN KEY (import_id, store_id) REFERENCES public.imports(id, store_id);
+ALTER TABLE public.ingredient_purchase_costs ADD CONSTRAINT ingredient_cost_store_fk
+ FOREIGN KEY (ingredient_id, store_id) REFERENCES public.ingredients(id, store_id);
+ALTER TABLE public.recipe_versions ADD CONSTRAINT recipe_product_store_fk
+ FOREIGN KEY (product_id, store_id) REFERENCES public.products(id, store_id);
+ALTER TABLE public.sale_prices ADD CONSTRAINT sale_price_product_store_fk
+ FOREIGN KEY (product_id, store_id) REFERENCES public.products(id, store_id);
+ALTER TABLE public.recipe_lines ADD COLUMN store_id UUID NOT NULL;
+ALTER TABLE public.recipe_lines ADD CONSTRAINT recipe_lines_recipe_store_fk
+ FOREIGN KEY (recipe_id, store_id) REFERENCES public.recipe_versions(id, store_id);
+ALTER TABLE public.recipe_lines ADD CONSTRAINT recipe_lines_ingredient_store_fk
+ FOREIGN KEY (ingredient_id, store_id) REFERENCES public.ingredients(id, store_id);
+
+-- Fechamentos e históricos devem ter retificação controlada, não DELETE direto.
+DROP POLICY IF EXISTS "periods_delete" ON public.periods;
+DROP POLICY IF EXISTS "imports_delete" ON public.imports;
+DROP POLICY IF EXISTS "prod_rows_delete" ON public.import_product_rows;
+DROP POLICY IF EXISTS "pay_rows_delete" ON public.import_payment_rows;
+DROP POLICY IF EXISTS "dre_ref_delete" ON public.dre_workbook_references;
+DROP POLICY IF EXISTS "rule_versions_delete" ON public.financial_rule_versions;
+
+DROP POLICY IF EXISTS "periods_insert" ON public.periods;
+CREATE POLICY "periods_insert" ON public.periods FOR INSERT TO authenticated
+ WITH CHECK (app_security.has_manager_role(store_id)
+ AND status = 'DRAFT' AND closed_at IS NULL AND closed_by IS NULL
+ AND reopened_at IS NULL AND reopened_by IS NULL AND reopen_reason IS NULL);
+DROP POLICY IF EXISTS "periods_update" ON public.periods;
+CREATE POLICY "periods_update" ON public.periods FOR UPDATE TO authenticated
+ USING (app_security.has_manager_role(store_id) AND status = 'DRAFT')
+ WITH CHECK (app_security.has_manager_role(store_id) AND status = 'DRAFT');
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+ REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+ REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_security
+ REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+-- Acesso opt-in para a primeira operação SaaS: autenticação e competências.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+GRANT SELECT ON public.organizations, public.stores, public.store_memberships, public.periods TO authenticated;
+GRANT INSERT ON public.periods TO authenticated;

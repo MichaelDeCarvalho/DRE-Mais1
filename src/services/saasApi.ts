@@ -31,27 +31,28 @@ export interface PeriodRecord {
  */
 export async function fetchUserStores(): Promise<Store[]> {
   if (!isSupabaseConfigured || !supabase) {
-    return [];
+    throw new Error('Supabase não configurado. Verifique a conexão com o banco PostgreSQL.');
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError) {
+    throw new Error('Não foi possível confirmar a autenticação do usuário.');
+  }
   if (!user) return [];
 
-  const { data: memberships, error } = await supabase
-    .from('store_memberships')
-    .select('store:stores(*)')
-    .eq('user_id', user.id);
+  // A própria policy stores_select verifica memberships por loja e memberships
+  // organizacionais (store_id IS NULL). Não filtrar pela FK store do membership:
+  // para proprietários de toda a organização ela é intencionalmente NULL.
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .order('display_name', { ascending: true });
 
   if (error) {
-    console.error('[SaaS API] Erro ao buscar lojas do usuário:', error.message);
-    return [];
+    throw new Error(`Erro ao carregar lojas autorizadas: ${error.message}`);
   }
 
-  const stores: Store[] = (memberships || [])
-    .map((m) => (Array.isArray(m.store) ? m.store[0] : m.store) as unknown as Store | null)
-    .filter((s): s is Store => Boolean(s && typeof s === 'object' && 'id' in s));
-
-  return stores;
+  return (data ?? []) as Store[];
 }
 
 /**

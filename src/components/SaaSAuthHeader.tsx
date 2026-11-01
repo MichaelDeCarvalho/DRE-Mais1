@@ -16,21 +16,34 @@ export function SaaSAuthHeader({ onStoreChange }: SaaSAuthHeaderProps) {
   const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; message: string } | null>(null);
 
   async function loadUserSession() {
-    const sess = await getCurrentSession();
-    setSession(sess);
+    try {
+      const sess = await getCurrentSession();
+      setSession(sess);
 
-    if (sess.user && supabase) {
-      const storesList = await fetchUserStores();
-      setUserStores(storesList);
-      if (storesList.length > 0) {
-        setSelectedStoreId(storesList[0].id);
-        onStoreChange(storesList[0]);
+      if (sess.user && supabase) {
+        const storesList = await fetchUserStores();
+        setUserStores(storesList);
+        if (storesList.length > 0) {
+          setSelectedStoreId(storesList[0].id);
+          onStoreChange(storesList[0]);
+        } else {
+          setSelectedStoreId('');
+          onStoreChange(null);
+        }
       } else {
-        onStoreChange(sess.store);
+        setUserStores([]);
+        setSelectedStoreId('');
+        onStoreChange(null);
       }
-    } else {
+    } catch (err) {
+      console.error('[DRE Mais1] Falha ao carregar lojas autorizadas:', err);
       setUserStores([]);
+      setSelectedStoreId('');
       onStoreChange(null);
+      setConnectionStatus({
+        connected: false,
+        message: err instanceof Error ? err.message : 'Não foi possível consultar as lojas autorizadas.'
+      });
     }
   }
 
@@ -60,6 +73,7 @@ export function SaaSAuthHeader({ onStoreChange }: SaaSAuthHeaderProps) {
     }
     setSession(null);
     setUserStores([]);
+    setSelectedStoreId('');
     onStoreChange(null);
   }
 
