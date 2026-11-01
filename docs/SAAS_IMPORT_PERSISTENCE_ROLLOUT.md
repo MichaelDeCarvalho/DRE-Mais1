@@ -57,3 +57,10 @@
 - **Banco:** dry-run de função SQL passou com autorização por loja, recusa de operador, atualização de competência, idempotência, rollback induzido, divergência e metadados SHA inválidos. Transação revertida: competência 2026-09 permanece DRAFT, zero imports/linhas/arquivos.
 - **Não ativado:** migration da RPC `commit_monthly_import_v1` e Edge `commit-monthly-reports`. Não fazer deploy delas nem ligar UI até teste com identidade autorizada e XLSX binários reais. O arquivamento client-side suporta retry somente se download confirmar SHA-256 idêntico, sem UPDATE/DELETE.
 - **Próxima validação necessária:** upload/download original usando credenciais de uma conta de teste autorizada, teste HTTP autenticado do parser, RLS cruzado e E2E de commit em competência de teste; então testar concorrência e habilitar controle da interface.
+
+
+## E2E autenticado pronto para execução manual (sem commit SQL)
+- Script: `scripts/homologate-storage-readonly.mjs`, acionado somente pelo job GitHub Actions `storage-http-integration` em `workflow_dispatch` na branch PR #5.
+- Requer conta **dedicada de teste**, com perfil MANAGER na Loja SJP; não reutilizar o login OWNER principal. Configurar no GitHub Secrets: `DRE_E2E_EMAIL`, `DRE_E2E_PASSWORD`, `DRE_E2E_PUBLISHABLE_KEY`. Não registrar senhas/tokens em chat ou commit.
+- O job verifica competência SJP/2026-09 DRAFT, carrega as duas fixtures já públicas, arquiva originais com `upsert:false`, faz download + SHA-256 real e invoca a Edge somente de validação por JWT; confere 122/9 linhas, diferença zero. **Não executa `commit_monthly_import_v1`**, não altera tabelas financeiras.
+- Como DELETE comum é proibido, os dois objetos poderão permanecer staged até futura reconciliação; por isso o job **não roda automaticamente** no CI. Só disparar após autorização operacional e configuração de credenciais de teste.
