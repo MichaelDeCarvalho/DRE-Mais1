@@ -47,6 +47,9 @@ jobs:
           deno check supabase/functions/validate-monthly-reports/index.ts
           deno check supabase/functions/commit-monthly-reports/index.ts
 
+      - name: Testes XLSX reais no runtime Deno
+        run: deno test --allow-read supabase/functions/_shared/parseMonthlyReports.deno_test.ts
+
       - name: Smoke HTTP — Edge validação exige autenticação (PR 5)
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
         run: |
