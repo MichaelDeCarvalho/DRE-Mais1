@@ -49,6 +49,34 @@ BEGIN
    RAISE EXCEPTION 'Permissão não aplicada';
  EXCEPTION WHEN insufficient_privilege THEN NULL;
  END;
+ -- Conferir precedência: papel OPERATOR da loja substitui OWNER da organização.
+ INSERT INTO public.store_memberships(user_id,organization_id,store_id,role)
+ SELECT v_actor,s.organization_id,v_store,'OPERATOR'
+ FROM public.stores s WHERE s.id=v_store;
+ BEGIN
+   PERFORM public.commit_monthly_import_v1(v_actor,v_store,v_period,v_pf,v_ff,v_products,v_payments);
+   RAISE EXCEPTION 'Operador restrito aceito indevidamente';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+ DELETE FROM public.store_memberships
+ WHERE user_id=v_actor AND store_id=v_store AND role='OPERATOR';
+
+ -- Induz violação na segunda linha depois da criação de imports; subtransação
+ -- do bloco EXCEPTION deve cancelar todos os registros parciais.
+ BEGIN
+   PERFORM public.commit_monthly_import_v1(v_actor,v_store,v_period,v_pf,v_ff,
+     jsonb_build_array(v_products->0,jsonb_set(v_products->1,'{sourceRow}','2'::jsonb)),
+     v_payments);
+   RAISE EXCEPTION 'Falha parcial artificial não detectada';
+ EXCEPTION WHEN unique_violation THEN NULL;
+ END;
+ IF EXISTS (SELECT 1 FROM public.imports WHERE period_id=v_period)
+    OR EXISTS (SELECT 1 FROM public.import_product_rows WHERE store_id=v_store)
+    OR EXISTS (SELECT 1 FROM public.import_payment_rows WHERE store_id=v_store)
+    OR (SELECT status FROM public.periods WHERE id=v_period)<>'DRAFT' THEN
+    RAISE EXCEPTION 'Rollback atômico falhou';
+ END IF;
+
  v_a := public.commit_monthly_import_v1(v_actor,v_store,v_period,v_pf,v_ff,v_products,v_payments);
  IF v_a->>'state'<>'IMPORTED' OR (v_a->>'differenceCents')::integer<>0 THEN
    RAISE EXCEPTION 'Primeiro commit incorreto: %',v_a;
