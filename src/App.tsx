@@ -7,6 +7,7 @@ import { validatedDreMetrics } from './dre_reference';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
 import { SaaSAuthHeader } from './components/SaaSAuthHeader';
 import type { Store } from './supabase/types';
+import { fetchStorePeriods, createStorePeriod, type PeriodRecord } from './services/saasApi';
 
 async function invoke<T>(_cmd: string, _args?: unknown): Promise<T> {
   throw new Error('Operação SaaS em desenvolvimento no backend Supabase PostgreSQL.');
@@ -125,8 +126,50 @@ export function App() {
   }
   const [viewedPeriod,setViewedPeriod] = useState<string|null>(null);
   const [periodNotice,setPeriodNotice] = useState('');
+  const [storedPeriods, setStoredPeriods] = useState<PeriodRecord[]>([]);
+  const [periodLoading, setPeriodLoading] = useState(false);
+  const [periodCreating, setPeriodCreating] = useState(false);
   const [year, setYear] = useState('2026');
   const [month, setMonth] = useState('09');
+
+  async function loadPeriodsFromSupabase(storeId: string) {
+    setPeriodLoading(true);
+    setPeriodNotice('');
+    clearPeriodViews(true);
+    try {
+      const periodsList = await fetchStorePeriods(storeId);
+      setStoredPeriods(periodsList);
+    } catch (e) {
+      setPeriodNotice(explainError(e));
+      setStoredPeriods([]);
+    } finally {
+      setPeriodLoading(false);
+    }
+  }
+
+  async function handleCreatePeriodInSupabase() {
+    if (!currentStore || periodCreating) return;
+    setPeriodCreating(true);
+    setPeriodNotice('');
+    try {
+      const created = await createStorePeriod(currentStore.id, period);
+      setStoredPeriods((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+      setPeriodNotice(`Competência ${periodLabel(period)} criada com sucesso no PostgreSQL!`);
+      setViewedPeriod(period);
+    } catch (e) {
+      setPeriodNotice(explainError(e));
+    } finally {
+      setPeriodCreating(false);
+    }
+  }
+
+  useEffect(() => {
+    if (currentStore) {
+      loadPeriodsFromSupabase(currentStore.id);
+    } else {
+      setStoredPeriods([]);
+    }
+  }, [currentStore]);
   const [productsPath, setProductsPath] = useState<string | null>(null);
   const [paymentsPath, setPaymentsPath] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -475,13 +518,7 @@ export function App() {
     if(row.valueKind==='PERCENTUAL'&&Number.isFinite(Number(row.rawValue)))return (Number(row.rawValue)*100).toFixed(2)+'%';
     return row.rawValue||'—';
   }
-  async function loadSaved() {
-    if (busy || !/^20\d\d$/.test(year)) return;
-    setPending(true);setError(null);clearPeriodViews();
-    try { await refreshPeriod(period); }
-    catch(e){setError(explainError(e));}
-    finally {setPending(false);}
-  }
+
   const recipeCandidates=findRecipeCandidates(costRows,recipeProductSearch);
   const selectedRecipeRow=costRows.find(row=>row.productCode===recipeProduct);
   const selectedRecipeApproved=selectedRecipeRow?.status==='FICHA_APROVADA'||Boolean(recipeApprovalMessage);
@@ -556,9 +593,54 @@ export function App() {
         <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL SAAS</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas por competência e loja. Fechamento gerencial auditável.</p></div><div className="header-tag">{currentStore ? `Loja: ${currentStore.display_name}` : 'Unidade Franquia'}</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
-          <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { clearPeriodViews(true); setYear(e.target.value); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { clearPeriodViews(true); setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="primary-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>{pending?'Consultando todos os módulos…':'Consultar competência'}</button></div>
-          {periodNotice && <p role="status" className="period-notice">{periodNotice}</p>}
-          {viewedPeriod && <p className="footnote">Dados exibidos referentes à competência consultada: <strong>{periodLabel(viewedPeriod)}</strong>. A prévia da DRE permanece sujeita às validações de fechamento.</p>}
+          <div className="selectors">
+            <label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy || periodCreating} onChange={(e) => { setYear(e.target.value); }} aria-label="Ano" /></label>
+            <label>Mês<select value={month} disabled={busy || periodCreating} onChange={(e) => { setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label>
+            <div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div>
+            <button type="button" className="primary-button" disabled={busy || periodCreating || !/^20\d\d$/.test(year)} onClick={handleCreatePeriodInSupabase}>
+              {periodCreating ? 'Persistindo no PostgreSQL…' : 'Criar Competência no Supabase'}
+            </button>
+          </div>
+          {periodNotice && <div className={periodNotice.includes('sucesso') ? 'feedback feedback-info' : 'feedback feedback-error'} role="status"><p>{periodNotice}</p></div>}
+          
+          <div style={{ marginTop: '20px', borderTop: '1px solid var(--app-border, #304158)', paddingTop: '16px' }}>
+            <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: 'var(--app-text, #fff)' }}>
+              Competências cadastradas no PostgreSQL ({currentStore?.display_name})
+            </h4>
+            {periodLoading ? (
+              <p style={{ fontSize: '12px', color: 'var(--app-muted, #a9b8cb)' }}>Consultando banco Supabase…</p>
+            ) : storedPeriods.length > 0 ? (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {storedPeriods.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      const [y, m] = p.year_month.split('-');
+                      setYear(y);
+                      setMonth(m);
+                      setViewedPeriod(p.year_month);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: p.year_month === period ? '1px solid #42c9b5' : '1px solid var(--app-border, #304158)',
+                      background: p.year_month === period ? '#167d73' : 'var(--app-field, #202e42)',
+                      color: '#fff',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <strong>{periodLabel(p.year_month)}</strong> ({p.status})
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: '12px', color: 'var(--app-muted, #a9b8cb)', margin: 0 }}>
+                Nenhuma competência cadastrada ainda para esta loja no banco de dados.
+              </p>
+            )}
+          </div>
         </section>
         <section className="section-block catalog-section" aria-labelledby="catalog-heading">
           <div className="section-heading"><span className="step">A</span><div><h2 id="catalog-heading">Cadastro legado de referência (opcional)</h2><p>Carregue uma única vez a planilha consolidada com a aba Base DRE, para identificar códigos já conhecidos. Não importa fichas técnicas nem valores de CMV.</p></div></div>

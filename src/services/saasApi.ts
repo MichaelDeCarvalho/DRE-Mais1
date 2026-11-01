@@ -79,12 +79,12 @@ export async function fetchStorePeriods(storeId: string): Promise<PeriodRecord[]
  * Creates a new monthly period in Supabase PostgreSQL, enforcing RLS and duplicate prevention.
  */
 export async function createStorePeriod(storeId: string, yearMonth: string): Promise<PeriodRecord> {
-  if (!isSupabaseConfigured || !supabase) {
-    throw new Error('Supabase não configurado.');
+  if (!/^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$/.test(yearMonth)) {
+    throw new Error('Formato de competência inválido. Utilize YYYY-MM.');
   }
 
-  if (!/^[1-2][0-9][0-9][0-9]-[0-1][0-9]$/.test(yearMonth)) {
-    throw new Error('Formato de competência inválido. Utilize YYYY-MM.');
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase não configurado.');
   }
 
   const { data, error } = await supabase

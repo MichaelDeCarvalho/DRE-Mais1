@@ -1,9 +1,12 @@
 -- Migration DRE Mais1 SaaS: Multi-Tenant PostgreSQL + Supabase RLS Schema
--- Versão 1.2.0 - Reforço estrito de RLS por papéis (OWNER, ADMIN, MANAGER, OPERATOR) e imutabilidade de históricos
+-- Versão 1.3.0 - Schema privado app_security, controle de EXECUTE, RLS anti-recursivo e validação estrita YYYY-MM
 
 -- Habilitar extensões necessárias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Schema privado de segurança (não exposto à REST Data API do Supabase)
+CREATE SCHEMA IF NOT EXISTS app_security;
 
 -- ============================================================================
 -- 1. TABELAS DE ORGANIZAÇÃO, ESTRUTURA E MEMBROS (RBAC MULTI-TENANT)
@@ -37,6 +40,11 @@ CREATE TABLE IF NOT EXISTS public.store_memberships (
     CONSTRAINT unique_user_store_membership UNIQUE (user_id, organization_id, store_id)
 );
 
+-- Garantir unicidade de memberships para toda a organização (store_id IS NULL)
+CREATE UNIQUE INDEX IF NOT EXISTS unique_org_membership_all_stores 
+ON public.store_memberships(user_id, organization_id) 
+WHERE store_id IS NULL;
+
 -- ============================================================================
 -- 2. OPERAÇÕES FINANCEIRAS, COMPETÊNCIAS E IMPORTAÇÕES BRUTAS
 -- ============================================================================
@@ -44,7 +52,7 @@ CREATE TABLE IF NOT EXISTS public.store_memberships (
 CREATE TABLE IF NOT EXISTS public.periods (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
-    year_month VARCHAR(7) NOT NULL CHECK (year_month ~ '^[1-2][0-9][0-9][0-9]-[0-1][0-9]$'),
+    year_month VARCHAR(7) NOT NULL CHECK (year_month ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'IMPORTADO', 'PENDENTE', 'PRONTO', 'FECHADO', 'DIVERGENTE')),
     closed_at TIMESTAMPTZ,
     closed_by UUID,
@@ -83,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.imports (
     file_sha256 CHAR(64) NOT NULL,
     file_size_bytes BIGINT NOT NULL CHECK (file_size_bytes > 0),
     storage_path TEXT,
-    detected_period VARCHAR(7),
+    detected_period VARCHAR(7) CHECK (detected_period IS NULL OR detected_period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     parser_version TEXT NOT NULL DEFAULT 'v1.0.0-saas',
     record_count INT NOT NULL CHECK (record_count >= 0),
     total_cents BIGINT NOT NULL,
@@ -119,7 +127,7 @@ CREATE TABLE IF NOT EXISTS public.import_payment_rows (
     method_raw TEXT NOT NULL,
     method_normalized TEXT NOT NULL,
     entry_type TEXT NOT NULL CHECK (entry_type IN ('STANDARD', 'MANUAL')),
-    detected_period VARCHAR(7) NOT NULL,
+    detected_period VARCHAR(7) NOT NULL CHECK (detected_period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     value_cents BIGINT NOT NULL,
     CONSTRAINT unique_payment_row UNIQUE (import_id, source_sheet, source_row)
 );
@@ -142,7 +150,7 @@ CREATE TABLE IF NOT EXISTS public.ingredient_purchase_costs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
     ingredient_id UUID NOT NULL REFERENCES public.ingredients(id) ON DELETE CASCADE,
-    period VARCHAR(7) NOT NULL,
+    period VARCHAR(7) NOT NULL CHECK (period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     quantity_base BIGINT NOT NULL CHECK (quantity_base > 0),
     purchase_cents BIGINT NOT NULL CHECK (purchase_cents >= 0),
     freight_cents BIGINT NOT NULL DEFAULT 0 CHECK (freight_cents >= 0),
@@ -156,7 +164,7 @@ CREATE TABLE IF NOT EXISTS public.recipe_versions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
-    period VARCHAR(7) NOT NULL,
+    period VARCHAR(7) NOT NULL CHECK (period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     approved_at TIMESTAMPTZ,
     approved_by UUID,
     approved_note TEXT,
@@ -176,7 +184,7 @@ CREATE TABLE IF NOT EXISTS public.sale_prices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
-    period VARCHAR(7) NOT NULL,
+    period VARCHAR(7) NOT NULL CHECK (period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     price_cents BIGINT NOT NULL CHECK (price_cents > 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT unique_sale_price_per_period UNIQUE (store_id, product_id, period)
@@ -185,7 +193,7 @@ CREATE TABLE IF NOT EXISTS public.sale_prices (
 CREATE TABLE IF NOT EXISTS public.expenses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
-    period VARCHAR(7) NOT NULL,
+    period VARCHAR(7) NOT NULL CHECK (period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     expense_kind TEXT NOT NULL CHECK (expense_kind IN ('VARIAVEL', 'FIXA', 'TRIBUTO')),
     category TEXT NOT NULL CHECK (length(trim(category)) > 0),
     description TEXT NOT NULL CHECK (length(trim(description)) > 0),
@@ -208,7 +216,7 @@ CREATE TABLE IF NOT EXISTS public.financial_rules (
 CREATE TABLE IF NOT EXISTS public.financial_rule_versions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     rule_id UUID NOT NULL REFERENCES public.financial_rules(id) ON DELETE CASCADE,
-    effective_from VARCHAR(7) NOT NULL,
+    effective_from VARCHAR(7) NOT NULL CHECK (effective_from ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     basis_points INT NOT NULL CHECK (basis_points >= 0 AND basis_points <= 10000),
     source TEXT NOT NULL,
     note TEXT,
@@ -219,7 +227,7 @@ CREATE TABLE IF NOT EXISTS public.financial_rule_versions (
 CREATE TABLE IF NOT EXISTS public.dre_workbook_references (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     store_id UUID NOT NULL REFERENCES public.stores(id) ON DELETE CASCADE,
-    period VARCHAR(7) NOT NULL,
+    period VARCHAR(7) NOT NULL CHECK (period ~ '^[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])$'),
     filename TEXT NOT NULL,
     file_sha256 CHAR(64) NOT NULL,
     source_month_label TEXT NOT NULL,
@@ -231,11 +239,11 @@ CREATE TABLE IF NOT EXISTS public.dre_workbook_references (
 );
 
 -- ============================================================================
--- 4. FUNÇÕES DE SEGURANÇA E AUXILIARES RBAC (SECURITY DEFINER + SEARCH_PATH)
+-- 4. FUNÇÕES DE SEGURANÇA E AUXILIARES RBAC NO SCHEMA PRIVADO `app_security`
 -- ============================================================================
 
--- Função para verificar se o usuário autenticado tem acesso a uma determinada loja
-CREATE OR REPLACE FUNCTION public.has_store_access(target_store_id UUID)
+-- Função para verificar acesso à loja sem causar recursão RLS
+CREATE OR REPLACE FUNCTION app_security.has_store_access(target_store_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
     IF auth.uid() IS NULL THEN
@@ -253,8 +261,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
--- Função para obter o papel (role) do usuário na loja (incluindo admin organizacional com store_id IS NULL)
-CREATE OR REPLACE FUNCTION public.get_user_store_role(target_store_id UUID)
+-- Função para obter papel do usuário na loja
+CREATE OR REPLACE FUNCTION app_security.get_user_store_role(target_store_id UUID)
 RETURNS TEXT AS $$
 DECLARE
     user_role TEXT;
@@ -276,24 +284,64 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
--- Função para verificar se o usuário possui papéis administrativos/gerenciais (OWNER, ADMIN, MANAGER)
-CREATE OR REPLACE FUNCTION public.has_manager_role(target_store_id UUID)
+-- Função para verificar papel gerencial (OWNER, ADMIN, MANAGER)
+CREATE OR REPLACE FUNCTION app_security.has_manager_role(target_store_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
-    RETURN public.get_user_store_role(target_store_id) IN ('OWNER', 'ADMIN', 'MANAGER');
+    RETURN app_security.get_user_store_role(target_store_id) IN ('OWNER', 'ADMIN', 'MANAGER');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
--- Função para verificar se o usuário é OWNER ou ADMIN (gestão de organização/membros)
-CREATE OR REPLACE FUNCTION public.has_admin_role(target_store_id UUID)
+-- Função para verificar papel de administração (OWNER, ADMIN)
+CREATE OR REPLACE FUNCTION app_security.has_admin_role(target_store_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
-    RETURN public.get_user_store_role(target_store_id) IN ('OWNER', 'ADMIN');
+    RETURN app_security.get_user_store_role(target_store_id) IN ('OWNER', 'ADMIN');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- Procedimento seguro de bootstrap administrativo para primeira organização/loja
+CREATE OR REPLACE FUNCTION app_security.bootstrap_organization(
+    org_name TEXT,
+    org_slug TEXT,
+    store_code TEXT,
+    store_display_name TEXT,
+    owner_user_id UUID
+) RETURNS JSONB AS $$
+DECLARE
+    new_org_id UUID;
+    new_store_id UUID;
+BEGIN
+    INSERT INTO public.organizations (name, slug)
+    VALUES (org_name, org_slug)
+    RETURNING id INTO new_org_id;
+
+    INSERT INTO public.stores (organization_id, code, display_name)
+    VALUES (new_org_id, store_code, store_display_name)
+    RETURNING id INTO new_store_id;
+
+    INSERT INTO public.store_memberships (user_id, organization_id, store_id, role)
+    VALUES (owner_user_id, new_org_id, NULL, 'OWNER');
+
+    RETURN jsonb_build_object(
+        'organization_id', new_org_id,
+        'store_id', new_store_id,
+        'owner_user_id', owner_user_id
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- Restringir privilégios EXECUTE no schema privado
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app_security FROM PUBLIC;
+GRANT USAGE ON SCHEMA app_security TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION app_security.has_store_access(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION app_security.get_user_store_role(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION app_security.has_manager_role(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION app_security.has_admin_role(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION app_security.bootstrap_organization(TEXT, TEXT, TEXT, TEXT, UUID) TO service_role;
 
 -- ============================================================================
--- 5. ATIVAÇÃO DE ROW LEVEL SECURITY (RLS) E POLÍTICAS EXPLÍCITAS POR OPERAÇÃO
+-- 5. ATIVAÇÃO DE ROW LEVEL SECURITY (RLS) E POLÍTICAS EXPLÍCITAS
 -- ============================================================================
 
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
@@ -315,106 +363,106 @@ ALTER TABLE public.financial_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.financial_rule_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dre_workbook_references ENABLE ROW LEVEL SECURITY;
 
--- Organizations: Apenas leitura para membros da organização
+-- Organizations
 CREATE POLICY "org_select" ON public.organizations FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.store_memberships sm WHERE sm.organization_id = id AND sm.user_id = auth.uid())
 );
 
--- Stores: Leitura para membros autorizados
+-- Stores
 CREATE POLICY "stores_select" ON public.stores FOR SELECT USING (
     EXISTS (SELECT 1 FROM public.store_memberships sm WHERE sm.organization_id = organization_id AND sm.user_id = auth.uid() AND (sm.store_id IS NULL OR sm.store_id = id))
 );
 
--- Memberships: Leitura do próprio usuário ou admin da org
+-- Memberships
 CREATE POLICY "memberships_select" ON public.store_memberships FOR SELECT USING (
-    user_id = auth.uid() OR public.has_admin_role(store_id)
+    user_id = auth.uid() OR app_security.has_admin_role(store_id)
 );
 
--- Periods: Leitura por qualquer membro da loja; Inserção/Atualização restrita a gerentes e admins (EXCLUI operator)
-CREATE POLICY "periods_select" ON public.periods FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "periods_insert" ON public.periods FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "periods_update" ON public.periods FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "periods_delete" ON public.periods FOR DELETE USING (public.has_admin_role(store_id));
+-- Periods
+CREATE POLICY "periods_select" ON public.periods FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "periods_insert" ON public.periods FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "periods_update" ON public.periods FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "periods_delete" ON public.periods FOR DELETE USING (app_security.has_admin_role(store_id));
 
 -- Products & External Codes
-CREATE POLICY "products_select" ON public.products FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "products_insert" ON public.products FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "products_update" ON public.products FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "products_delete" ON public.products FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "products_select" ON public.products FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "products_insert" ON public.products FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "products_update" ON public.products FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "products_delete" ON public.products FOR DELETE USING (app_security.has_admin_role(store_id));
 
-CREATE POLICY "codes_select" ON public.product_external_codes FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "codes_insert" ON public.product_external_codes FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "codes_update" ON public.product_external_codes FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "codes_delete" ON public.product_external_codes FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "codes_select" ON public.product_external_codes FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "codes_insert" ON public.product_external_codes FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "codes_update" ON public.product_external_codes FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "codes_delete" ON public.product_external_codes FOR DELETE USING (app_security.has_admin_role(store_id));
 
--- Imports & Row Data (Imutabilidade de históricos: UPDATE e DELETE bloqueados para operadores/gerentes comuns, permitidos apenas admin/owner)
-CREATE POLICY "imports_select" ON public.imports FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "imports_insert" ON public.imports FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "imports_update" ON public.imports FOR UPDATE USING (public.has_admin_role(store_id));
-CREATE POLICY "imports_delete" ON public.imports FOR DELETE USING (public.has_admin_role(store_id));
+-- Imports & Row Data
+CREATE POLICY "imports_select" ON public.imports FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "imports_insert" ON public.imports FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "imports_update" ON public.imports FOR UPDATE USING (app_security.has_admin_role(store_id));
+CREATE POLICY "imports_delete" ON public.imports FOR DELETE USING (app_security.has_admin_role(store_id));
 
-CREATE POLICY "prod_rows_select" ON public.import_product_rows FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "prod_rows_insert" ON public.import_product_rows FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "prod_rows_delete" ON public.import_product_rows FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "prod_rows_select" ON public.import_product_rows FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "prod_rows_insert" ON public.import_product_rows FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "prod_rows_delete" ON public.import_product_rows FOR DELETE USING (app_security.has_admin_role(store_id));
 
-CREATE POLICY "pay_rows_select" ON public.import_payment_rows FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "pay_rows_insert" ON public.import_payment_rows FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "pay_rows_delete" ON public.import_payment_rows FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "pay_rows_select" ON public.import_payment_rows FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "pay_rows_insert" ON public.import_payment_rows FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "pay_rows_delete" ON public.import_payment_rows FOR DELETE USING (app_security.has_admin_role(store_id));
 
 -- Ingredients & Costs
-CREATE POLICY "ingredients_select" ON public.ingredients FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "ingredients_insert" ON public.ingredients FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "ingredients_update" ON public.ingredients FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "ingredients_delete" ON public.ingredients FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "ingredients_select" ON public.ingredients FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "ingredients_insert" ON public.ingredients FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "ingredients_update" ON public.ingredients FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "ingredients_delete" ON public.ingredients FOR DELETE USING (app_security.has_admin_role(store_id));
 
-CREATE POLICY "costs_select" ON public.ingredient_purchase_costs FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "costs_insert" ON public.ingredient_purchase_costs FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "costs_update" ON public.ingredient_purchase_costs FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "costs_delete" ON public.ingredient_purchase_costs FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "costs_select" ON public.ingredient_purchase_costs FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "costs_insert" ON public.ingredient_purchase_costs FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "costs_update" ON public.ingredient_purchase_costs FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "costs_delete" ON public.ingredient_purchase_costs FOR DELETE USING (app_security.has_admin_role(store_id));
 
 -- Recipes & Sale Prices
-CREATE POLICY "recipe_select" ON public.recipe_versions FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "recipe_insert" ON public.recipe_versions FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "recipe_update" ON public.recipe_versions FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "recipe_delete" ON public.recipe_versions FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "recipe_select" ON public.recipe_versions FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "recipe_insert" ON public.recipe_versions FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "recipe_update" ON public.recipe_versions FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "recipe_delete" ON public.recipe_versions FOR DELETE USING (app_security.has_admin_role(store_id));
 
 CREATE POLICY "recipe_lines_select" ON public.recipe_lines FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.recipe_versions rv WHERE rv.id = recipe_id AND public.has_store_access(rv.store_id))
+    EXISTS (SELECT 1 FROM public.recipe_versions rv WHERE rv.id = recipe_id AND app_security.has_store_access(rv.store_id))
 );
 CREATE POLICY "recipe_lines_insert" ON public.recipe_lines FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.recipe_versions rv WHERE rv.id = recipe_id AND public.has_manager_role(rv.store_id))
+    EXISTS (SELECT 1 FROM public.recipe_versions rv WHERE rv.id = recipe_id AND app_security.has_manager_role(rv.store_id))
 );
 CREATE POLICY "recipe_lines_delete" ON public.recipe_lines FOR DELETE USING (
-    EXISTS (SELECT 1 FROM public.recipe_versions rv WHERE rv.id = recipe_id AND public.has_admin_role(rv.store_id))
+    EXISTS (SELECT 1 FROM public.recipe_versions rv WHERE rv.id = recipe_id AND app_security.has_admin_role(rv.store_id))
 );
 
-CREATE POLICY "prices_select" ON public.sale_prices FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "prices_insert" ON public.sale_prices FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "prices_update" ON public.sale_prices FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "prices_delete" ON public.sale_prices FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "prices_select" ON public.sale_prices FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "prices_insert" ON public.sale_prices FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "prices_update" ON public.sale_prices FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "prices_delete" ON public.sale_prices FOR DELETE USING (app_security.has_admin_role(store_id));
 
 -- Expenses & Financial Rules
-CREATE POLICY "expenses_select" ON public.expenses FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "expenses_insert" ON public.expenses FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "expenses_update" ON public.expenses FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "expenses_delete" ON public.expenses FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "expenses_select" ON public.expenses FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "expenses_insert" ON public.expenses FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "expenses_update" ON public.expenses FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "expenses_delete" ON public.expenses FOR DELETE USING (app_security.has_admin_role(store_id));
 
-CREATE POLICY "rules_select" ON public.financial_rules FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "rules_insert" ON public.financial_rules FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "rules_update" ON public.financial_rules FOR UPDATE USING (public.has_manager_role(store_id));
-CREATE POLICY "rules_delete" ON public.financial_rules FOR DELETE USING (public.has_admin_role(store_id));
+CREATE POLICY "rules_select" ON public.financial_rules FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "rules_insert" ON public.financial_rules FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "rules_update" ON public.financial_rules FOR UPDATE USING (app_security.has_manager_role(store_id));
+CREATE POLICY "rules_delete" ON public.financial_rules FOR DELETE USING (app_security.has_admin_role(store_id));
 
 CREATE POLICY "rule_versions_select" ON public.financial_rule_versions FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.financial_rules fr WHERE fr.id = rule_id AND public.has_store_access(fr.store_id))
+    EXISTS (SELECT 1 FROM public.financial_rules fr WHERE fr.id = rule_id AND app_security.has_store_access(fr.store_id))
 );
 CREATE POLICY "rule_versions_insert" ON public.financial_rule_versions FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.financial_rules fr WHERE fr.id = rule_id AND public.has_manager_role(fr.store_id))
+    EXISTS (SELECT 1 FROM public.financial_rules fr WHERE fr.id = rule_id AND app_security.has_manager_role(fr.store_id))
 );
 CREATE POLICY "rule_versions_delete" ON public.financial_rule_versions FOR DELETE USING (
-    EXISTS (SELECT 1 FROM public.financial_rules fr WHERE fr.id = rule_id AND public.has_admin_role(fr.store_id))
+    EXISTS (SELECT 1 FROM public.financial_rules fr WHERE fr.id = rule_id AND app_security.has_admin_role(fr.store_id))
 );
 
--- DRE Workbook References (Imutabilidade de auditoria financeira)
-CREATE POLICY "dre_ref_select" ON public.dre_workbook_references FOR SELECT USING (public.has_store_access(store_id));
-CREATE POLICY "dre_ref_insert" ON public.dre_workbook_references FOR INSERT WITH CHECK (public.has_manager_role(store_id));
-CREATE POLICY "dre_ref_delete" ON public.dre_workbook_references FOR DELETE USING (public.has_admin_role(store_id));
+-- DRE Workbook References
+CREATE POLICY "dre_ref_select" ON public.dre_workbook_references FOR SELECT USING (app_security.has_store_access(store_id));
+CREATE POLICY "dre_ref_insert" ON public.dre_workbook_references FOR INSERT WITH CHECK (app_security.has_manager_role(store_id));
+CREATE POLICY "dre_ref_delete" ON public.dre_workbook_references FOR DELETE USING (app_security.has_admin_role(store_id));
