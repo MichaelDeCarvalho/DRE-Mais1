@@ -365,12 +365,12 @@ ALTER TABLE public.dre_workbook_references ENABLE ROW LEVEL SECURITY;
 
 -- Organizations
 CREATE POLICY "org_select" ON public.organizations FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.store_memberships sm WHERE sm.organization_id = organizations.id AND sm.user_id = auth.uid())
+    EXISTS (SELECT 1 FROM public.store_memberships sm WHERE sm.organization_id = id AND sm.user_id = auth.uid())
 );
 
 -- Stores
 CREATE POLICY "stores_select" ON public.stores FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.store_memberships sm WHERE sm.organization_id = stores.organization_id AND sm.user_id = auth.uid() AND (sm.store_id IS NULL OR sm.store_id = stores.id))
+    EXISTS (SELECT 1 FROM public.store_memberships sm WHERE sm.organization_id = organization_id AND sm.user_id = auth.uid() AND (sm.store_id IS NULL OR sm.store_id = id))
 );
 
 -- Memberships
