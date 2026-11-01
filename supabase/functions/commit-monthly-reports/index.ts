@@ -6,21 +6,12 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.118.0';
 import readExcelFile from 'npm:read-excel-file@9.3.14/browser';
 import {parseMonthlyReports, type Worksheet} from '../_shared/parseMonthlyReports.ts';
+import {corsHeadersForOrigin} from '../_shared/cors.ts';
 
 const BUCKET='dre-mais1-report-archives';
-const ALLOWED_ORIGIN='https://dre-mais1-homologacao.corsys1.workers.dev';
-const CORS={'access-control-allow-origin':ALLOWED_ORIGIN,
-  'access-control-allow-headers':'authorization, apikey, x-client-info, content-type',
-  'access-control-allow-methods':'POST, OPTIONS',
-  'vary':'Origin'};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BYTES=20*1024*1024;
 
-function json(status:number, value:unknown):Response {
-  return new Response(JSON.stringify(value),{
-    status,headers:{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}
-  });
-}
 function validPath(storeId:string,periodId:string,kind:'PRODUCTS'|'PAYMENTS',path:string):boolean {
   const prefix=storeId.toLowerCase()+'/'+periodId.toLowerCase()+'/'+kind+'/';
   return path.startsWith(prefix) &&
@@ -38,6 +29,11 @@ function env(key:string):string {
 }
 
 Deno.serve(async(req:Request):Promise<Response>=>{
+  const CORS=corsHeadersForOrigin(req.headers.get('origin'));
+  const json=(status:number, value:unknown):Response=>
+    new Response(JSON.stringify(value),{
+      status,headers:{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}
+    });
   if(req.method==='OPTIONS') return new Response(null,{status:204,headers:CORS});
   if(req.method!=='POST') return json(405,{error:'Método não permitido.'});
   const tokenHeader=req.headers.get('authorization') || '';
