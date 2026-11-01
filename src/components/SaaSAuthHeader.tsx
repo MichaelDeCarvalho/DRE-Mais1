@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured, getCurrentSession, testSupabaseConnection } from '../supabase/client';
 import type { UserSession, Store } from '../supabase/types';
+import { fetchUserStores } from '../services/saasApi';
 import { SaaSAuthModal } from './SaaSAuthModal';
 
 interface SaaSAuthHeaderProps {
@@ -19,15 +20,7 @@ export function SaaSAuthHeader({ onStoreChange }: SaaSAuthHeaderProps) {
     setSession(sess);
 
     if (sess.user && supabase) {
-      const { data: memberships } = await supabase
-        .from('store_memberships')
-        .select('store_id, store:stores(*)')
-        .eq('user_id', sess.user.id);
-
-      const storesList: Store[] = (memberships || [])
-        .map((m) => (Array.isArray(m.store) ? m.store[0] : m.store) as unknown as Store | null)
-        .filter((s): s is Store => Boolean(s && typeof s === 'object' && 'id' in s));
-
+      const storesList = await fetchUserStores();
       setUserStores(storesList);
       if (storesList.length > 0) {
         setSelectedStoreId(storesList[0].id);

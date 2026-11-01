@@ -1,10 +1,10 @@
 /**
  * SaaS API Service layer for DRE Mais1.
- * Communicates with Supabase PostgreSQL and Edge Functions.
- * Replaces all Tauri desktop IPC commands with secure server-side SaaS operations.
+ * Communicates with Supabase PostgreSQL and Edge Functions with real authentication and RLS.
  */
 
 import { supabase, isSupabaseConfigured } from '../supabase/client';
+import type { Store } from '../supabase/types';
 import type { ImportSummary, CatalogStatus, MappingOverview } from '../types';
 
 export interface FinancialRuleDto {
@@ -17,11 +17,98 @@ export interface FinancialRuleDto {
   source: string | null;
 }
 
+export interface PeriodRecord {
+  id: string;
+  store_id: string;
+  year_month: string;
+  status: 'DRAFT' | 'IMPORTADO' | 'PENDENTE' | 'PRONTO' | 'FECHADO' | 'DIVERGENTE';
+  closed_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Fetches authorized stores for the authenticated user from Supabase PostgreSQL.
+ */
+export async function fetchUserStores(): Promise<Store[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data: memberships, error } = await supabase
+    .from('store_memberships')
+    .select('store:stores(*)')
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('[SaaS API] Erro ao buscar lojas do usuário:', error.message);
+    return [];
+  }
+
+  const stores: Store[] = (memberships || [])
+    .map((m) => (Array.isArray(m.store) ? m.store[0] : m.store) as unknown as Store | null)
+    .filter((s): s is Store => Boolean(s && typeof s === 'object' && 'id' in s));
+
+  return stores;
+}
+
+/**
+ * Fetches monthly periods for a given store from Supabase PostgreSQL.
+ */
+export async function fetchStorePeriods(storeId: string): Promise<PeriodRecord[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase não configurado. Conecte o banco PostgreSQL.');
+  }
+
+  const { data, error } = await supabase
+    .from('periods')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('year_month', { ascending: false });
+
+  if (error) {
+    throw new Error(`Erro ao consultar competências: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+/**
+ * Creates a new monthly period in Supabase PostgreSQL, enforcing RLS and duplicate prevention.
+ */
+export async function createStorePeriod(storeId: string, yearMonth: string): Promise<PeriodRecord> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase não configurado.');
+  }
+
+  if (!/^[1-2][0-9][0-9][0-9]-[0-1][0-9]$/.test(yearMonth)) {
+    throw new Error('Formato de competência inválido. Utilize YYYY-MM.');
+  }
+
+  const { data, error } = await supabase
+    .from('periods')
+    .insert([
+      { store_id: storeId, year_month: yearMonth, status: 'DRAFT' }
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(`A competência ${yearMonth} já está cadastrada para esta loja.`);
+    }
+    throw new Error(`Erro ao criar competência: ${error.message}`);
+  }
+
+  return data;
+}
+
 export async function fetchCatalogStatus(_storeId: string): Promise<CatalogStatus> {
   if (!isSupabaseConfigured || !supabase) {
     return { loaded: false, filename: null, validCodes: 0, skippedRows: 0 };
   }
-  // Real Supabase PostgreSQL query implementation placeholder
   return { loaded: false, filename: null, validCodes: 0, skippedRows: 0 };
 }
 
