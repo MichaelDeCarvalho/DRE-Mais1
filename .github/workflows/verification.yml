@@ -72,3 +72,22 @@ jobs:
           grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_cors_headers
           grep -E -iq '^access-control-allow-origin: https://dre-mais1-homologacao.corsys1.workers.dev' /tmp/dre_cors_headers
 
+
+      - name: Smoke HTTP — CORS prévia da branch e negação de origem externa
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          url='https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/validate-monthly-reports'
+          qa='https://qa-dre-mais1-homologacao.corsys1.workers.dev'
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_qa_headers \
+            -X OPTIONS "$url" \
+            -H "Origin: $qa" \
+            -H 'Access-Control-Request-Method: POST'
+          grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_qa_headers
+          grep -E -iq "^access-control-allow-origin: $qa" /tmp/dre_qa_headers
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_bad_headers \
+            -X OPTIONS "$url" \
+            -H 'Origin: https://attacker.example' \
+            -H 'Access-Control-Request-Method: POST'
+          if grep -E -iq '^access-control-allow-origin:' /tmp/dre_bad_headers; then
+            echo 'Origem não confiável recebeu CORS'; exit 1
+          fi
