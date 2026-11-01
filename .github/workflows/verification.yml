@@ -1,144 +1,38 @@
-name: Verificacao - Marco 1
+name: DRE Mais1 SaaS Verification
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'saas-*']
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Evita gastar runners com compilacoes obsoletas no mesmo branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  tests-desktop:
-    name: ${{ matrix.platform }} - testes e compilacao Tauri
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            os: ubuntu-22.04
-          - platform: windows
-            os: windows-2022
+  saas-web-verification:
+    name: SaaS Web - Testes e Build Vite
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Dependencias Linux do Tauri 2
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      # Ainda sem package-lock.json. Depois do primeiro build validado,
-      # versionar lockfiles e substituir npm install por npm ci.
-      - name: Instalar dependencias frontend
+      - name: Instalar dependências
         run: npm install --no-audit --no-fund
 
       - name: Testes frontend - Vitest
         run: npm test
 
-      - name: Typecheck e build Vite
+      - name: Typecheck e Build Vite
         run: npm run build
-
-      - name: Testes reais Rust
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-
-      # As fixtures XLSX e as regras de importacao sao testadas em Rust acima.
-      # verify_fixtures.py e verify_legacy_catalog.py usam artifact_tool,
-      # disponivel no ambiente de analise, mas nao no runner do GitHub.
-      - name: Validar contratos SQLite portaveis
-        run: |
-          python tools/verify_persistence_contract.py
-          python tools/verify_catalog_status_contract.py
-
-      - name: Compilar Tauri principal sem instalador
-        if: runner.os == 'Linux'
-        run: npm run tauri -- build --no-bundle --ci
-
-      - name: Compilar homologacao Windows com banco isolado
-        if: runner.os == 'Windows'
-        run: npm run tauri -- build --no-bundle --ci --config src-tauri/tauri.homologacao.conf.json
-
-      - name: Preservar executavel de homologacao antes do segundo build
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/target/artifacts/homologacao | Out-Null
-          Copy-Item -LiteralPath src-tauri/target/release/dre-mais1.exe -Destination src-tauri/target/artifacts/homologacao/dre-mais1.exe
-
-      - name: Compilar referencia validada Windows com banco independente
-        if: runner.os == 'Windows'
-        run: npm run tauri -- build --no-bundle --ci --config src-tauri/tauri.dre-referencia.conf.json
-
-      - name: Preservar executavel de referencia em artefato separado
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path src-tauri/target/artifacts/referencia | Out-Null
-          Copy-Item -LiteralPath src-tauri/target/release/dre-mais1.exe -Destination src-tauri/target/artifacts/referencia/dre-mais1.exe
-
-      # Runner automatizado nao equivale a desktop interativo: diagnostico nao bloqueante.
-      - name: Diagnostico inicializacao Windows (nao homologacao GUI)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        continue-on-error: true
-        timeout-minutes: 2
-        run: ./tools/smoke_windows.ps1
-
-      - name: Guardar lockfiles gerados
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lockfiles-${{ matrix.platform }}
-          path: |
-            package-lock.json
-            src-tauri/Cargo.lock
-          if-no-files-found: warn
-
-      - name: Guardar executavel Windows nao homologado
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: dre-mais1-windows-homologacao-isolada
-          path: src-tauri/target/artifacts/homologacao/dre-mais1.exe
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Guardar executavel Windows de referencia validada
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: dre-mais1-windows-referencia-validada
-          path: src-tauri/target/artifacts/referencia/dre-mais1.exe
-          if-no-files-found: error
-          retention-days: 7

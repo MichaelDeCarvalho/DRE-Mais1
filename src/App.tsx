@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
-import { invoke } from '@tauri-apps/api/core';
 import { brl, periodLabel } from './format';
 import { consultPeriodModules, nextCompetence } from './competence';
 import { parseQuantityMilliBase } from './quantity';
@@ -9,6 +7,13 @@ import { validatedDreMetrics } from './dre_reference';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
 import { SaaSAuthHeader } from './components/SaaSAuthHeader';
 import type { Store } from './supabase/types';
+
+async function invoke<T>(_cmd: string, _args?: unknown): Promise<T> {
+  throw new Error('Operação SaaS em desenvolvimento no backend Supabase PostgreSQL.');
+}
+async function open(_opts: unknown): Promise<string | null> {
+  return null;
+}
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
 type ReportKind = 'products' | 'payments';
