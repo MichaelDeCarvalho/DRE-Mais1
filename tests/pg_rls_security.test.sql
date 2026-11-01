@@ -4,7 +4,12 @@
 BEGIN;
 
 -- 1. Setup de fixtures para Testes de Isolamento Multi-Tenant
-CREATE UNIQUE INDEX IF NOT EXISTS test_unique_org_slug ON public.organizations(slug);
+-- Identidades de teste reais no auth.users, revertidas no ROLLBACK.
+-- Necessarias após FK store_memberships.user_id -> auth.users.id.
+INSERT INTO auth.users (id, aud, role, email, encrypted_password, created_at, updated_at)
+VALUES
+ ('a0000000-0000-0000-0000-000000000001','authenticated','authenticated','rls-qa-alpha@example.invalid','',now(),now()),
+ ('b0000000-0000-0000-0000-000000000001','authenticated','authenticated','rls-qa-beta@example.invalid','',now(),now());
 
 INSERT INTO public.organizations (id, name, slug)
 VALUES 
