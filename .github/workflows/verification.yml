@@ -55,3 +55,13 @@ jobs:
             -H 'Content-Type: application/json' --data '{}')
           echo "HTTP unauthenticated: $status"
           test "$status" = '401'
+
+      - name: Smoke HTTP — preflight CORS da Edge (PR 5)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          curl -sS --max-time 20 -o /tmp/dre_cors_body -D /tmp/dre_cors_headers \
+            -X OPTIONS 'https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/validate-monthly-reports' \
+            -H 'Origin: https://dre-mais1-homologacao.corsys1.workers.dev' \
+            -H 'Access-Control-Request-Method: POST'
+          grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_cors_headers
+          grep -E -iq '^access-control-allow-origin: https://dre-mais1-homologacao.corsys1.workers.dev' /tmp/dre_cors_headers
