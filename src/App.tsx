@@ -7,6 +7,8 @@ import { parseQuantityMilliBase } from './quantity';
 import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
 import { validatedDreMetrics } from './dre_reference';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
+import { SaaSAuthHeader } from './components/SaaSAuthHeader';
+import type { Store } from './supabase/types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
 type ReportKind = 'products' | 'payments';
@@ -24,6 +26,7 @@ function initialTheme(): ThemePreference {
   return 'dark';
 }
 export function App() {
+  const [currentStore, setCurrentStore] = useState<Store | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>(initialTheme);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true);
   const [activeSection, setActiveSection] = useState('period-heading');
@@ -484,7 +487,9 @@ export function App() {
   }
   const visibleProducts = result?.unmappedProducts.filter((p) => `${p.externalCode} ${p.name} ${p.category}`.toLocaleLowerCase('pt-BR').includes(filter.toLocaleLowerCase('pt-BR'))) || [];
   return (
-    <div className="shell">
+    <>
+      <SaaSAuthHeader onStoreChange={(store) => setCurrentStore(store)} />
+      <div className="shell">
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>Gestão financeira offline</small></div></div>
         <nav aria-label="Navegação principal" className="app-nav">
@@ -497,7 +502,7 @@ export function App() {
         <div className="sidebar-bottom"><span className="status-dot" /> Dados armazenados localmente <small>DRE em validação · Sem fechamento definitivo</small></div>
       </aside>
       <main className="content">
-        <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas organizados por competência. Fechamento sujeito à validação.</p></div><div className="header-tag">Processamento offline</div></header>
+        <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL SAAS</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas por competência e loja. Fechamento gerencial auditável.</p></div><div className="header-tag">{currentStore ? `Loja: ${currentStore.display_name}` : 'Unidade Franquia'}</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
           <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { clearPeriodViews(true); setYear(e.target.value); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { clearPeriodViews(true); setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="primary-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>{pending?'Consultando todos os módulos…':'Consultar competência'}</button></div>
@@ -761,5 +766,6 @@ export function App() {
         <footer>DRE Mais1 · Dados locais · Fechamento gerencial condicionado à conferência</footer>
       </main>
     </div>
+    </>
   );
 }
