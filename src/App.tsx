@@ -9,6 +9,7 @@ import { SaaSAuthHeader } from './components/SaaSAuthHeader';
 import type { Store } from './supabase/types';
 import { fetchStorePeriods, createStorePeriod, type PeriodRecord } from './services/saasApi';
 import { previewXlsxFiles, type MonthlyImportPreview } from './importPreview';
+import { ArchivedReportHomologation } from './components/ArchivedReportHomologation';
 
 async function invoke<T>(_cmd: string, _args?: unknown): Promise<T> {
   throw new Error('Operação SaaS em desenvolvimento no backend Supabase PostgreSQL.');
@@ -640,6 +641,16 @@ export function App() {
             <p>{importPreview.reconciled ? '✓ Conciliação exata na prévia.' : '⚠ Valores divergentes: não autoriza fechamento.'} Receita positiva {brl(importPreview.positiveSalesCents)}; ajustes {brl(importPreview.adjustmentsCents)}.</p>
           </div>}
           {error && <div className="feedback feedback-error" role="alert"><strong>Pré-validação não concluída</strong><p>{error}</p></div>}
+          {import.meta.env.VITE_ENABLE_ARCHIVE_HOMOLOGATION === 'true' && currentStore && (
+            <ArchivedReportHomologation
+              key={`${currentStore.id}:${period}`}
+              storeId={currentStore.id}
+              period={storedPeriods.find(p => p.year_month === period)}
+              productsFile={productsFile}
+              paymentsFile={paymentsFile}
+              preview={importPreview}
+            />
+          )}
         </section>
         {result ? <>
           <section className="section-block" aria-labelledby="reconciliation-heading">
