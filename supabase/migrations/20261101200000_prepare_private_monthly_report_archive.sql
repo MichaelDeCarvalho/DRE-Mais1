@@ -49,7 +49,38 @@ ON storage.objects FOR INSERT TO authenticated
 WITH CHECK (
   bucket_id = 'dre-mais1-report-archives'
   AND (storage.foldername(name))[3] IN ('PRODUCTS','PAYMENTS')
-  AND (storage.filename(name)) ~ '^[a-f0-9]{64}\\.xlsx$'
+  AND (storage.filename(name)) ~ '^[a-f0-9]{64}[.]xlsx
+  AND array_length(storage.foldername(name),1) = 3
+  AND EXISTS (
+    SELECT 1 FROM public.periods p
+    WHERE p.store_id::text = (storage.foldername(name))[1]
+      AND p.id::text = (storage.foldername(name))[2]
+      AND p.status = 'DRAFT'
+      AND app_security.has_manager_role(p.store_id)
+  )
+);
+
+CREATE POLICY "dre_archive_select_authorized_store"
+ON storage.objects FOR SELECT TO authenticated
+USING (
+  bucket_id = 'dre-mais1-report-archives'
+  AND EXISTS (
+    SELECT 1 FROM public.periods p
+    WHERE p.store_id::text = (storage.foldername(name))[1]
+      AND p.id::text = (storage.foldername(name))[2]
+      AND app_security.has_store_access(p.store_id)
+  )
+);
+
+-- Por enquanto, importações financeiras não são graváveis diretamente
+-- pela Data API: a futura função server-side deve validar em uma única
+-- transação os dados dos dois XLSX e toda a conciliação.
+REVOKE INSERT, UPDATE, DELETE ON
+  public.imports,
+  public.import_product_rows,
+  public.import_payment_rows
+FROM anon, authenticated;
+
   AND array_length(storage.foldername(name),1) = 3
   AND EXISTS (
     SELECT 1 FROM public.periods p
