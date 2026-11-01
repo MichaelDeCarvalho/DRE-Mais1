@@ -95,3 +95,16 @@
 - Esta atualização de documentação na branch `feat/saas-import-transaction-20261101` dispara novo push com a Preview Base já ativada. **Não altera `main`, não aciona `wrangler deploy` e não instala a RPC financeira.**
 - Critério de verificação: build Cloudflare **Preview** concluído com sucesso, URL fornecida pela própria Cloudflare (Preview/PR comment), login OWNER atual, envio dos XLSX condicionado à confirmação do operador. O CI GitHub não substitui comprovação de publicação na Cloudflare.
 - Em caso de falha: consultar Cloudflare → Worker → Deployments → Build history / Previews e copiar o erro, sem alterar produção.
+
+
+## Estado verificado após autorização: RPC instalada em homologação
+
+- **Autorização explícita do operador:** instalação da função SQL transacional, **sem lançar importações**.
+- Supabase destino **exclusivo**: projeto `mgtovbvnbkzrdytudynf`, Loja SJP. `mcp__Supabase__apply_migration` respondeu `success:true`.
+- Migration aplicada e registrada em `supabase_migrations` como **`20261101234958_add_atomic_monthly_import_rpc`**. O arquivo GitHub foi renomeado para `supabase/migrations/20261101234958_add_atomic_monthly_import_rpc.sql` para coincidir com a versão efetivamente registrada. **Não reaplicar.**
+- Catálogo `pg_proc` verificado: `commit_monthly_import_v1(uuid,uuid,uuid,jsonb,jsonb,jsonb,jsonb)`, `security_definer=false`, `search_path=pg_catalog, pg_temp`; **EXECUTE negado a `anon` e `authenticated`; permitido somente a `service_role` e `postgres`**.
+- Execução pós-instalação de `supabase/tests/commit_monthly_import_rollback.sql` e `supabase/tests/commit_real_archive_metadata_rollback.sql` com `BEGIN; <teste>; ROLLBACK;`: **PASS sem exceções**. Casos cobertos: escopo gerencial, rollback de falha intermediária, duas tabelas de imports e suas linhas, centavos, diferenças, idempotência, objetos reais já arquivados e tamanho registrado no Storage. As linhas de ensaio eram sintéticas e foram descartadas.
+- Verificação de integridade após os testes: **1 competência** (2026-09 `DRAFT`), **0 `imports`**, **0 linhas de produtos**, **0 linhas de pagamentos**, **2 XLSX originais no Storage privado**.
+- **Edge de gravação `commit-monthly-reports` NÃO implantada**. A Edge ativa permanece somente `validate-monthly-reports` v2, `verify_jwt=true`. UI ainda não chama a importação financeira.
+- Advisor Supabase mantém aviso pré-existente `auth_leaked_password_protection` (proteção contra senhas vazadas desabilitada), não introduzido pela RPC; nenhuma alteração em configurações de Auth foi autorizada.
+- **Próxima decisão separada:** autorizar, após revisão do fluxo, implantação controlada da Edge de commit e primeiro lançamento real dos dados. Instalar a RPC não equivale a autorizar essas ações.
