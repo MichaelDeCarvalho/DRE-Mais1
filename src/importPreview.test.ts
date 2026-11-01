@@ -71,3 +71,26 @@ describe('pré-validação XLSX — relatórios mensais', () => {
     expect(() => previewParsedSheets(changed, payments, '2026-09')).toThrow('Inteiro inválido');
   });
 });
+
+it('reconcilia os dois arquivos XLSX de fixture do repositório (integração do parser)', async () => {
+  const { default: readExcelFile } = await import('read-excel-file/node');
+  const [productSheets, paymentSheets] = await Promise.all([
+    readExcelFile('tests/fixtures/produtos-set-2026.xlsx'),
+    readExcelFile('tests/fixtures/pagamentos-set-2026.xlsx')
+  ]);
+  const result = previewParsedSheets(
+    productSheets as SheetData[],
+    paymentSheets as SheetData[],
+    '2026-09'
+  );
+  expect(result).toMatchObject({
+    productRows: 122, paymentRows: 9,
+    soldProductCodes: 120,
+    positiveSalesCents: 2837070,
+    adjustmentsCents: -342607,
+    productsTotalCents: 2494463,
+    paymentsTotalCents: 2494463,
+    differenceCents: 0,
+    reconciled: true
+  });
+});
