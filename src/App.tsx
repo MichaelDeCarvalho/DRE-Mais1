@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { brl, periodLabel } from './format';
-import { consultPeriodModules, nextCompetence } from './competence';
+import { nextCompetence } from './competence';
 import { parseQuantityMilliBase } from './quantity';
 import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
 import { validatedDreMetrics } from './dre_reference';
@@ -8,6 +8,7 @@ import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOvervie
 import { SaaSAuthHeader } from './components/SaaSAuthHeader';
 import type { Store } from './supabase/types';
 import { fetchStorePeriods, createStorePeriod, type PeriodRecord } from './services/saasApi';
+import { previewXlsxFiles, type MonthlyImportPreview } from './importPreview';
 
 async function invoke<T>(_cmd: string, _args?: unknown): Promise<T> {
   throw new Error('Operação SaaS em desenvolvimento no backend Supabase PostgreSQL.');
@@ -172,6 +173,11 @@ export function App() {
   }, [currentStore]);
   const [productsPath, setProductsPath] = useState<string | null>(null);
   const [paymentsPath, setPaymentsPath] = useState<string | null>(null);
+  const [productsFile, setProductsFile] = useState<File | null>(null);
+  const [paymentsFile, setPaymentsFile] = useState<File | null>(null);
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const paymentInputRef = useRef<HTMLInputElement>(null);
+  const [importPreview, setImportPreview] = useState<MonthlyImportPreview | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportSummary | null>(null);
@@ -239,7 +245,7 @@ export function App() {
   const period = `${year}-${month}`;
   const [mappingSaving, setMappingSaving] = useState(false);
   const busy = pending || catalogLoading || dialogBusy || mappingSaving || recipeBusy || ingredientBusy || costBusy || salePriceBusy || dreBusy || expenseBusy || paramBusy || dreWorkbookBusy;
-  const canSubmit = /^20\d\d$/.test(year) && Boolean(productsPath && paymentsPath) && !busy;
+  const canSubmit = /^20\d\d$/.test(year) && Boolean(productsFile && paymentsFile) && !busy;
   useEffect(() => {
     let active = true;
     invoke<CatalogStatus>('get_catalog_status').then(status => {
@@ -251,20 +257,25 @@ export function App() {
     });
     return () => { active = false; };
   }, []);
-  async function selectFile(which: ReportKind) {
+  function selectFile(which: ReportKind) {
     if (busy) return;
+    if (which === 'products') productInputRef.current?.click();
+    else paymentInputRef.current?.click();
+  }
+  function handleSelectedFile(which: ReportKind, file: File | null) {
+    if (!file || busy) return;
     setError(null);
-    setDialogBusy(true);
-    try {
-      const chosen = await open({ multiple: false, directory: false, title: which === 'products' ? 'Selecione o relatório de produtos' : 'Selecione o relatório de pagamentos', filters: [{ name: 'Planilhas Excel', extensions: ['xls', 'xlsx'] }] });
-      if (typeof chosen === 'string') {
-        setResult(null);
-        setEditingCode(null);
-        if (which === 'products') setProductsPath(chosen);
-        else setPaymentsPath(chosen);
-      }
-    } catch (e) { setError(explainError(e)); }
-    finally { setDialogBusy(false); }
+    setImportPreview(null);
+    setResult(null);
+    setEditingCode(null);
+    if (!/\.xlsx$/i.test(file.name) || file.size < 1 || file.size > 20 * 1024 * 1024) {
+      setError('Selecione uma planilha .xlsx válida, não vazia e com até 20 MiB. Arquivos .xls exigem conversão.');
+      if (which === 'products') { setProductsFile(null); setProductsPath(null); }
+      else { setPaymentsFile(null); setPaymentsPath(null); }
+      return;
+    }
+    if (which === 'products') { setProductsFile(file); setProductsPath(file.name); }
+    else { setPaymentsFile(file); setPaymentsPath(file.name); }
   }
   async function selectCatalog() {
     if (busy || catalogStatusLoading || catalogStatus?.loaded || catalogError) return;
@@ -429,18 +440,17 @@ export function App() {
     finally{setCostBusy(false);}
   }
   async function submit() {
-    if (!productsPath || !paymentsPath || !canSubmit) return;
-    setPending(true); setError(null); setResult(null); setEditingCode(null); setFilter('');
+    if (!productsFile || !paymentsFile || !canSubmit) return;
+    setPending(true); setError(null); setImportPreview(null); setResult(null);
     try {
-      const data = await invoke<ImportSummary>('import_reports', { period, productsPath, paymentsPath });
-      setResult(data);
-      await refreshPeriod(period);
+      const data = await previewXlsxFiles(productsFile, paymentsFile, period);
+      setImportPreview(data);
     } catch (e) { setError(explainError(e)); }
     finally { setPending(false); }
   }
   /** Descarta resultados do mês anterior antes de trocar ano/mês ou consultar novamente. */
   function clearPeriodViews(clearInputs=false){
-    setResult(null);setFilter('');setEditingCode(null);setEditedName('');setEditedCategory('');
+    setResult(null);setImportPreview(null);setFilter('');setEditingCode(null);setEditedName('');setEditedCategory('');
     setIngredients([]);setIngredientError('');setIngredientInfo('');
     setRecipeCost(null);setRecipeDetail(null);setRecipeError('');setRecipeApprovalMessage('');
     setCostRows([]);setCmvSummary(null);setCostError('');
@@ -450,7 +460,7 @@ export function App() {
     setParameters([]);setParamMessage('');
     setViewedPeriod(null);
     if(clearInputs){
-      setProductsPath(null);setPaymentsPath(null);
+      setProductsPath(null);setPaymentsPath(null);setProductsFile(null);setPaymentsFile(null);
       setRecipeProduct('');setRecipeProductSearch('');setRecipeIngredient('');setRecipeQty('');setRecipeApprovalNote('');
       setIngredientCode('');setIngredientName('');setIngredientQty('');setIngredientCost('');
       setIngredientSupplier('');setIngredientFreight('0');setIngredientSt('0');
@@ -459,44 +469,6 @@ export function App() {
       cancelParameterEdit();
       setPeriodNotice('Competência alterada. Clique em Consultar competência para carregar os dados de todos os módulos.');
     }
-  }
-  async function refreshPeriod(reference:string){
-    const records=await consultPeriodModules(reference,(command,args)=>invoke(command,args));
-    const summary=records.load_period_summary;
-    if(summary.status==='fulfilled')setResult(summary.value as ImportSummary);
-    else setError(`Conciliação indisponível para ${reference}: ${explainError(summary.reason)}`);
-
-    const ingredientResult=records.list_ingredients;
-    if(ingredientResult.status==='fulfilled')setIngredients(ingredientResult.value as typeof ingredients);
-    else setIngredientError(explainError(ingredientResult.reason));
-
-    const costs=records.monthly_cost_overview;
-    if(costs.status==='fulfilled')setCostRows(costs.value as typeof costRows);
-    else setCostError(explainError(costs.reason));
-
-    const cmv=records.monthly_cmv_summary;
-    if(cmv.status==='fulfilled')setCmvSummary(cmv.value as typeof cmvSummary);
-    else setCostError(previous=>[previous,explainError(cmv.reason)].filter(Boolean).join(' · '));
-
-    const dre=records.get_dre_preview;
-    if(dre.status==='fulfilled')setDrePreview(dre.value as typeof drePreview);
-    else setDreError(explainError(dre.reason));
-
-    const expenses=records.list_expenses;
-    if(expenses.status==='fulfilled')setExpenseRows(expenses.value as typeof expenseRows);
-    else setExpenseError(explainError(expenses.reason));
-
-    const params=records.list_financial_parameters;
-    if(params.status==='fulfilled')setParameters(params.value as FinancialParameter[]);
-    else setParamMessage(explainError(params.reason));
-    const dreReferenceResult=records.get_validated_dre_workbook;
-    if(dreReferenceResult.status==='fulfilled')setDreWorkbook(dreReferenceResult.value as DreWorkbookSource|null);
-    else setDreWorkbookError(explainError(dreReferenceResult.reason));
-    const errors=Object.values(records).filter(item=>item.status==='rejected').length;
-    setViewedPeriod(reference);
-    setPeriodNotice(errors===0
-      ? `Competência ${periodLabel(reference)} atualizada em todos os módulos.`
-      : `Competência ${periodLabel(reference)} consultada. ${errors} módulo(s) sem dados ou com pendência; confira os avisos nas seções correspondentes.`);
   }
   async function importValidatedDreWorkbook(){
     if(busy||!/^20\d\d$/.test(year))return;
@@ -594,8 +566,8 @@ export function App() {
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
           <div className="selectors">
-            <label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy || periodCreating} onChange={(e) => { setYear(e.target.value); }} aria-label="Ano" /></label>
-            <label>Mês<select value={month} disabled={busy || periodCreating} onChange={(e) => { setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label>
+            <label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy || periodCreating} onChange={(e) => { setYear(e.target.value); setImportPreview(null); }} aria-label="Ano" /></label>
+            <label>Mês<select value={month} disabled={busy || periodCreating} onChange={(e) => { setMonth(e.target.value); setImportPreview(null); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label>
             <div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div>
             <button type="button" className="primary-button" disabled={busy || periodCreating || !/^20\d\d$/.test(year)} onClick={handleCreatePeriodInSupabase}>
               {periodCreating ? 'Persistindo no PostgreSQL…' : 'Criar Competência no Supabase'}
@@ -653,13 +625,21 @@ export function App() {
           {catalogError && <div className="feedback feedback-error" role="alert"><strong>Cadastro não carregado</strong><p>{catalogError}</p></div>}
         </section>
         <section className="section-block" aria-labelledby="upload-heading">
-          <div className="section-heading"><span className="step">02</span><div><h2 id="upload-heading">Arquivos para importação</h2><p>Os arquivos não são enviados à internet. Os dados originais serão preservados.</p></div></div>
+          <div className="section-heading"><span className="step">02</span><div><h2 id="upload-heading">Pré-validação dos relatórios mensais</h2><p>Os arquivos são analisados temporariamente neste navegador. Esta etapa não envia nem grava dados no Supabase.</p></div></div>
+          <input type="file" accept=".xlsx" ref={productInputRef} style={{ display: 'none' }} aria-label="Arquivo XLSX de produtos" onChange={e => { handleSelectedFile('products', e.currentTarget.files?.[0] || null); e.currentTarget.value = ''; }} />
+          <input type="file" accept=".xlsx" ref={paymentInputRef} style={{ display: 'none' }} aria-label="Arquivo XLSX de pagamentos" onChange={e => { handleSelectedFile('payments', e.currentTarget.files?.[0] || null); e.currentTarget.value = ''; }} />
           <div className="file-grid">
-            <article className="file-card"><div className="file-icon">▤</div><div><h3>Relatório de produtos</h3><p>Operacional → Produtos · XLS / XLSX</p><strong className={productsPath ? 'selected-file' : 'empty-file'}>{productsPath ? fileBaseName(productsPath) : 'Nenhum arquivo selecionado'}</strong></div><button type="button" className="outline-button" onClick={() => selectFile('products')} disabled={busy}>Selecionar arquivo</button></article>
-            <article className="file-card"><div className="file-icon">▣</div><div><h3>Relatório de pagamentos</h3><p>Faturamento → Métodos de Pagamento · XLS / XLSX</p><strong className={paymentsPath ? 'selected-file' : 'empty-file'}>{paymentsPath ? fileBaseName(paymentsPath) : 'Nenhum arquivo selecionado'}</strong></div><button type="button" className="outline-button" onClick={() => selectFile('payments')} disabled={busy}>Selecionar arquivo</button></article>
+            <article className="file-card"><div className="file-icon">▤</div><div><h3>Relatório de produtos</h3><p>Operacional → Produtos · XLSX</p><strong className={productsPath ? 'selected-file' : 'empty-file'}>{productsPath ? fileBaseName(productsPath) : 'Nenhum arquivo selecionado'}</strong></div><button type="button" className="outline-button" onClick={() => selectFile('products')} disabled={busy}>Selecionar arquivo</button></article>
+            <article className="file-card"><div className="file-icon">▣</div><div><h3>Relatório de pagamentos</h3><p>Faturamento → Métodos de Pagamento · XLSX</p><strong className={paymentsPath ? 'selected-file' : 'empty-file'}>{paymentsPath ? fileBaseName(paymentsPath) : 'Nenhum arquivo selecionado'}</strong></div><button type="button" className="outline-button" onClick={() => selectFile('payments')} disabled={busy}>Selecionar arquivo</button></article>
           </div>
-          <div className="action-line"><p>A importação registra os dois arquivos juntos e bloqueia duplicatas.</p><button type="button" className="primary-button" onClick={submit} disabled={!canSubmit}>{pending ? 'Processando…' : 'Validar e importar relatórios'} <span aria-hidden="true">→</span></button></div>
-          {error && <div className="feedback feedback-error" role="alert"><strong>Importação não concluída</strong><p>{error}</p></div>}
+          <div className="action-line"><p>Somente prévia: verifica layout, competência e conciliação. A importação definitiva e o histórico ainda não estão habilitados.</p><button type="button" className="primary-button" onClick={submit} disabled={!canSubmit}>{pending ? 'Validando…' : 'Validar arquivos sem gravar'} <span aria-hidden="true">→</span></button></div>
+          {importPreview && <div className="feedback feedback-info" role="status">
+            <strong>Prévia de {periodLabel(importPreview.period)} — NÃO GRAVADA NO BANCO</strong>
+            <p>Produtos: {importPreview.productRows} linhas, {importPreview.soldProductCodes} códigos vendidos. Pagamentos: {importPreview.paymentRows} linhas.</p>
+            <p>Vendas líquidas: <strong>{brl(importPreview.productsTotalCents)}</strong> · Pagamentos: <strong>{brl(importPreview.paymentsTotalCents)}</strong> · Diferença: <strong>{brl(importPreview.differenceCents)}</strong>.</p>
+            <p>{importPreview.reconciled ? '✓ Conciliação exata na prévia.' : '⚠ Valores divergentes: não autoriza fechamento.'} Receita positiva {brl(importPreview.positiveSalesCents)}; ajustes {brl(importPreview.adjustmentsCents)}.</p>
+          </div>}
+          {error && <div className="feedback feedback-error" role="alert"><strong>Pré-validação não concluída</strong><p>{error}</p></div>}
         </section>
         {result ? <>
           <section className="section-block" aria-labelledby="reconciliation-heading">
