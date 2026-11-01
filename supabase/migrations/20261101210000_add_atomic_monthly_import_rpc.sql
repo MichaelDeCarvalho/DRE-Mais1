@@ -90,14 +90,21 @@ BEGIN
      OR v_payment_size NOT BETWEEN 1 AND 20971520 THEN
     RAISE EXCEPTION 'Metadados dos arquivos inválidos' USING ERRCODE='22023';
   END IF;
+  -- Além do caminho/hash, exija tamanho idêntico aos bytes registrados
+  -- pelo serviço Storage. O hash dos bytes é conferido previamente pela Edge.
   IF NOT EXISTS (
     SELECT 1 FROM storage.objects
-    WHERE bucket_id = 'dre-mais1-report-archives' AND name = v_product_path
+    WHERE bucket_id = 'dre-mais1-report-archives'
+      AND name = v_product_path
+      AND (metadata->>'size')::bigint = v_product_size
   ) OR NOT EXISTS (
     SELECT 1 FROM storage.objects
-    WHERE bucket_id = 'dre-mais1-report-archives' AND name = v_payment_path
+    WHERE bucket_id = 'dre-mais1-report-archives'
+      AND name = v_payment_path
+      AND (metadata->>'size')::bigint = v_payment_size
   ) THEN
-    RAISE EXCEPTION 'Arquivos originais ausentes do Storage' USING ERRCODE='22023';
+    RAISE EXCEPTION 'Arquivos originais ausentes do Storage ou tamanho divergente'
+      USING ERRCODE='22023';
   END IF;
 
   IF EXISTS (
@@ -108,10 +115,17 @@ BEGIN
          OR nullif(x->>'productName','') IS NULL
          OR nullif(x->>'categoryName','') IS NULL
          OR x->>'rowType' NOT IN ('SALE','ADJUSTMENT','PLACEHOLDER')
+         OR jsonb_typeof(x->'sourceRow') IS DISTINCT FROM 'number'
+         OR jsonb_typeof(x->'quantity') IS DISTINCT FROM 'number'
+         OR jsonb_typeof(x->'valueCents') IS DISTINCT FROM 'number'
          OR (x->>'rowType'='SALE' AND nullif(x->>'externalCode','') IS NULL)
          OR (x->>'rowType'<>'SALE' AND nullif(x->>'externalCode','') IS NOT NULL)
          OR (x->>'sourceRow')::integer < 1
          OR (x->>'quantity')::integer < 0
+         OR (x->>'rowType'='SALE' AND (x->>'valueCents')::bigint < 0)
+         OR (x->>'rowType'='ADJUSTMENT' AND (x->>'valueCents')::bigint > 0)
+         OR (x->>'rowType'='PLACEHOLDER' AND
+            ((x->>'valueCents')::bigint <> 0 OR (x->>'quantity')::integer <> 0))
   ) OR EXISTS (
      SELECT 1 FROM jsonb_array_elements(p_payments) AS x
       WHERE jsonb_typeof(x) <> 'object'
@@ -120,8 +134,14 @@ BEGIN
         OR nullif(x->>'methodRaw','') IS NULL
         OR nullif(x->>'methodNormalized','') IS NULL
         OR x->>'entryType' NOT IN ('STANDARD','MANUAL')
+        OR x->>'methodNormalized' NOT IN
+          ('CREDIT','DEBIT','PIX','DIGITAL_WALLET','OTHER','CASH','VOUCHER')
+        OR (x->>'entryType'='MANUAL' AND x->>'methodNormalized' NOT IN ('CREDIT','DEBIT'))
         OR x->>'detectedPeriod' IS DISTINCT FROM v_period.year_month
+        OR jsonb_typeof(x->'sourceRow') IS DISTINCT FROM 'number'
+        OR jsonb_typeof(x->'valueCents') IS DISTINCT FROM 'number'
         OR (x->>'sourceRow')::integer < 1
+        OR (x->>'valueCents')::bigint < 0
   ) THEN
     RAISE EXCEPTION 'Linhas de relatório inválidas' USING ERRCODE='22023';
   END IF;
