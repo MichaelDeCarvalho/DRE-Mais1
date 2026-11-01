@@ -149,7 +149,7 @@ BEGIN
        AND v_payments_existing.total_cents = v_payments_total
        AND v_products_existing.status = v_state
        AND v_payments_existing.status = v_state
-       AND v_period.status = CASE WHEN v_state='VALIDADO' THEN 'IMPORTADO' ELSE 'DIVERGENTE' END
+       AND v_period.status = (CASE WHEN v_state = 'VALIDADO' THEN 'IMPORTADO' ELSE 'DIVERGENTE' END)
     THEN
       RETURN jsonb_build_object(
         'state','ALREADY_IMPORTED','periodId',p_period_id,
