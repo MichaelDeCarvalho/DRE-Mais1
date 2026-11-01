@@ -8,12 +8,17 @@ import readExcelFile from 'npm:read-excel-file@9.3.14/browser';
 import {parseMonthlyReports, type Worksheet} from '../_shared/parseMonthlyReports.ts';
 
 const BUCKET='dre-mais1-report-archives';
+const ALLOWED_ORIGIN='https://dre-mais1-homologacao.corsys1.workers.dev';
+const CORS={'access-control-allow-origin':ALLOWED_ORIGIN,
+  'access-control-allow-headers':'authorization, apikey, x-client-info, content-type',
+  'access-control-allow-methods':'POST, OPTIONS',
+  'vary':'Origin'};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BYTES=20*1024*1024;
 
 function json(status:number, value:unknown):Response {
   return new Response(JSON.stringify(value),{
-    status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}
+    status,headers:{...CORS,'content-type':'application/json; charset=utf-8','cache-control':'no-store'}
   });
 }
 function validPath(storeId:string,periodId:string,kind:'PRODUCTS'|'PAYMENTS',path:string):boolean {
@@ -33,6 +38,7 @@ function env(key:string):string {
 }
 
 Deno.serve(async(req:Request):Promise<Response>=>{
+  if(req.method==='OPTIONS') return new Response(null,{status:204,headers:CORS});
   if(req.method!=='POST') return json(405,{error:'Método não permitido.'});
   const tokenHeader=req.headers.get('authorization') || '';
   const match=/^Bearer ([^\s]+)$/.exec(tokenHeader);
@@ -72,12 +78,16 @@ Deno.serve(async(req:Request):Promise<Response>=>{
       .select('id,organization_id').eq('id',storeId).single();
     if(storeError||!store) return json(403,{error:'Loja inacessível.'});
     const {data:membership,error:membershipError}=await db.from('store_memberships')
-      .select('role,organization_id,store_id').eq('user_id',userData.user.id);
-    if(membershipError || !membership?.some(m=>
-      m.organization_id===store.organization_id &&
-      (m.store_id===null||m.store_id===storeId) &&
-      ['OWNER','ADMIN','MANAGER'].includes(m.role)
-    )) return json(403,{error:'Perfil sem permissão gerencial.'});
+      .select('role,organization_id,store_id')
+      .eq('user_id',userData.user.id)
+      .eq('organization_id',store.organization_id);
+    // Escopo de loja substitui (não soma) as permissões organizacionais.
+    const scoped=membership?.find(m=>m.store_id===storeId);
+    const orgWide=membership?.find(m=>m.store_id===null);
+    const resolved=scoped??orgWide;
+    if(membershipError || !resolved ||
+      !['OWNER','ADMIN','MANAGER'].includes(resolved.role))
+      return json(403,{error:'Perfil sem permissão gerencial.'});
 
     const {data:period,error:periodError}=await db.from('periods')
       .select('id,store_id,year_month,status').eq('id',periodId)
@@ -126,7 +136,7 @@ Deno.serve(async(req:Request):Promise<Response>=>{
   }catch(e){
     // Não devolver detalhes privados das integrações nem informações de outros tenants.
     const safe=e instanceof Error &&
-      /^(Arquivo privado não disponível|Tamanho do XLSX inválido|SHA-256 do XLSX divergente|Configuração server-side ausente)/.test(e.message);
-    return json(safe?422:422,{error:safe?(e as Error).message:'Não foi possível validar os arquivos XLSX arquivados.'});
+      /^(Arquivo privado não disponível|Tamanho do XLSX inválido|SHA-256 do XLSX divergente)/.test(e.message);
+    return json(safe?422:500,{error:safe?(e as Error).message:'Não foi possível validar os arquivos XLSX arquivados.'});
   }
 });
