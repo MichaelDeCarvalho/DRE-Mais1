@@ -6,10 +6,22 @@
 - A prévia no browser **não é** garantia de origem confiável. Todo payload do frontend precisa ser verificado no backend.
 
 ## Incremento preparado nesta branch
-- Migration aditiva, ainda **NÃO aplicada**, criando bucket privado `dre-mais1-report-archives` para os bytes originais de ambos os XLSX.
+- Migration aditiva, **APLICADA em 01/11/2026 somente à homologação** (versão `20261101194253`), criando bucket privado `dre-mais1-report-archives` para os bytes originais de ambos os XLSX.
 - Política de upload: papel autenticado com acesso gerencial à mesma loja e competência `DRAFT`, caminho `store_uuid/period_uuid/PRODUCTS|PAYMENTS/sha256.xlsx`, limite 20 MiB, sem update/delete no fluxo comum.
 - Política de leitura: membro autorizado da loja, por RLS.
 - Gravação direta das linhas via Data API **continua bloqueada**.
+
+
+## Homologação de Storage RLS (01/11/2026 — VERIFIED)
+- Projeto `mgtovbvnbkzrdytudynf` exclusivamente; migration `20261101194253_prepare_private_monthly_report_archive` aplicada.
+- Bucket privado criado e limitado a XLSX de até 20 MiB; policies INSERT e SELECT para `authenticated`.
+- Teste SQL real dentro de `BEGIN ... ROLLBACK` simulou OWNER SJP, MANAGER e OPERATOR da organização B, UID sem membership e role `anon`.
+- PASS: upload metadata + SELECT autorizado do proprietário SJP; gerente B pode inserir/consultar somente seu próprio tenant; operador B somente SELECT; tenant B não lê/escreve tenant SJP; usuário sem membership e anônimo não leem; caminho inválido, hash inválido e competência `FECHADO` rejeitados.
+- UPDATE direto não modificou linha; tentativa de DELETE direto bloqueada pelo mecanismo `storage.protect_delete` do Supabase. Nunca se deve usar DELETE SQL direto no Storage.
+- O teste de objetos foi de **metadados SQL**, não upload/download HTTP dos bytes pelo Storage API; isso continua NOT EVALUATED até o cliente de importação existir.
+- Após rollback: 1 competência existente mantida; 0 importações, 0 linhas de produtos/pagamentos e 0 objetos no bucket.
+- Security Advisors: aviso `auth_leaked_password_protection` (proteção contra senhas vazadas desativada), independente desta migration. Não há autorização para alterar as configurações de Auth neste incremento.
+- **PR ainda draft**; `main` e frontend publicados não foram alterados pela instalação. Não executar novamente a migration no mesmo banco.
 
 ## Próxima implementação, após aprovação da migration
 1. No frontend, gerar SHA-256 sobre os bytes dos XLSX carregados (não sobre texto extraído) e manter limite de 20 MiB.
