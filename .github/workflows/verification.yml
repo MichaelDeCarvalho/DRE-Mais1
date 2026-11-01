@@ -43,4 +43,6 @@ jobs:
           deno-version: lts
 
       - name: Typecheck da Edge Function de validação
-        run: deno check supabase/functions/validate-monthly-reports/index.ts
+        run: |
+          deno check supabase/functions/validate-monthly-reports/index.ts
+          deno check supabase/functions/commit-monthly-reports/index.ts
