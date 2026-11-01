@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
       - name: Build de homologação com painel OWNER habilitado (sem deploy)
-        run: VITE_ENABLE_ARCHIVE_HOMOLOGATION=true npm run build
+        run: npm run build:preview
 
       - name: Instalar Deno para checagem do backend (sem deploy)
         uses: denoland/setup-deno@v2
