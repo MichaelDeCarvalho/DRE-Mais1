@@ -13,6 +13,7 @@ AS $$
 DECLARE
   v_period public.periods%ROWTYPE;
   v_org uuid;
+  v_actual_role text;
   v_product_path text;
   v_payment_path text;
   v_product_hash text;
@@ -36,12 +37,15 @@ BEGIN
   END IF;
   SELECT s.organization_id INTO v_org
     FROM public.stores AS s WHERE s.id = p_store_id;
-  IF v_org IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.store_memberships AS m
-     WHERE m.user_id = p_actor AND m.organization_id = v_org
-       AND (m.store_id IS NULL OR m.store_id = p_store_id)
-       AND m.role IN ('OWNER','ADMIN','MANAGER')
-  ) THEN
+  -- Escopo da loja específica prevalece sobre o papel organizacional.
+  -- Deve corresponder a app_security.get_user_store_role (RLS existente).
+  SELECT m.role INTO v_actual_role
+    FROM public.store_memberships AS m
+   WHERE m.user_id = p_actor AND m.organization_id = v_org
+     AND (m.store_id IS NULL OR m.store_id = p_store_id)
+   ORDER BY (m.store_id IS NOT NULL) DESC LIMIT 1;
+  IF v_org IS NULL OR v_actual_role IS NULL
+    OR v_actual_role NOT IN ('OWNER','ADMIN','MANAGER') THEN
     RAISE EXCEPTION 'Acesso gerencial negado' USING ERRCODE='42501';
   END IF;
 
