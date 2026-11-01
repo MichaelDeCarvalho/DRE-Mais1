@@ -42,10 +42,18 @@
 - Banco atual da Loja SJP continua sem registro de importação até o fluxo transacional ser implementado e homologado.
 - Testar em ambiente de homologação; não publicar/mesclar antes de confirmar migration, RLS, testes de negativo, CI e fluxo real de reabertura.
 
-**Status:** SQL de arquivamento preparado em PR. Importação persistente: não implementada, nem validada em banco. Nenhum arquivo financeiro de produção deve ser importado nesta fase.
+**Status:** backend de persistência implementado na PR e testado com SQL descartável; a nova RPC ainda **não está aplicada** e o commit financeiro **não está implantado nem autorizado para uso operacional**.
 
 
 ## Continuidade técnica — 01/11/2026
 - A branch da PR #5 valida o conteúdo do par de relatórios antes do primeiro upload, sem modificar política RLS nem migration previamente aplicada na homologação.
 - Código da interface continua sem invocar o arquivamento; não existe persistência financeira/CMV/DRE nesta entrega.
-- Próximo bloqueio: parser do backend sobre bytes do Storage, hash verificado, autorização e transação SQL atômica. Testes HTTP reais e concorrência ainda necessários.
+- Parser e verificação de SHA-256 existem no backend; runtime Deno e SQL têm testes automatizados. Seguem pendentes homologação HTTP autenticada de XLSX e teste de concorrência/persistência real antes de ativar commit.
+
+
+## Entrega adicional — backend seguro, sem ativar gravação
+- **GitHub PR #5:** `supabase/functions/_shared/parseMonthlyReports.ts`, `supabase/functions/validate-monthly-reports/index.ts`, `supabase/functions/commit-monthly-reports/index.ts`, migration `20261101210000_add_atomic_monthly_import_rpc.sql` e testes SQL com `ROLLBACK`.
+- **Homologação:** SOMENTE `validate-monthly-reports` (sem escrita) implantada com `verify_jwt=true`; smoke HTTP confirma POST anônimo 401 e preflight CORS 204; runtime Deno interpreta os dois fixtures XLSX com totais originais.
+- **Banco:** dry-run de função SQL passou com autorização por loja, recusa de operador, atualização de competência, idempotência, rollback induzido, divergência e metadados SHA inválidos. Transação revertida: competência 2026-09 permanece DRAFT, zero imports/linhas/arquivos.
+- **Não ativado:** migration da RPC `commit_monthly_import_v1` e Edge `commit-monthly-reports`. Não fazer deploy delas nem ligar UI até teste com identidade autorizada e XLSX binários reais. O arquivamento client-side suporta retry somente se download confirmar SHA-256 idêntico, sem UPDATE/DELETE.
+- **Próxima validação necessária:** upload/download original usando credenciais de uma conta de teste autorizada, teste HTTP autenticado do parser, RLS cruzado e E2E de commit em competência de teste; então testar concorrência e habilitar controle da interface.
