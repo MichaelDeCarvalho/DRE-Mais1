@@ -88,3 +88,10 @@
 - A sessão do login no domínio de produção não é transferida automaticamente ao domínio Preview: **entrar novamente usando a mesma conta existente**, sem criar usuário ou pagar licença. O endpoint Edge v2 aceita a origem Preview do Worker e requer JWT/RLS.
 - A URL de Preview só será conhecida após o deployment; nunca inferir endereço inexistente. A interface atual de produção não será alterada até merge deliberado da PR.
 - Estado de execução ao escrever: PR em DRAFT; sem conexão Cloudflare de escrita neste chat; a aba Preview Base ainda precisa ser inspecionada pelo operador para evitar alterar configuração de produção.
+
+## Gatilho de Preview — configuração confirmada pelo operador, 01/11/2026
+
+- O operador confirmou na interface Cloudflare: **Builds for preview branches habilitado**; variáveis públicas `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` configuradas na aba Preview Base. Não armazenamos nem verificamos os respectivos valores, nem senha/JWT.
+- Esta atualização de documentação na branch `feat/saas-import-transaction-20261101` dispara novo push com a Preview Base já ativada. **Não altera `main`, não aciona `wrangler deploy` e não instala a RPC financeira.**
+- Critério de verificação: build Cloudflare **Preview** concluído com sucesso, URL fornecida pela própria Cloudflare (Preview/PR comment), login OWNER atual, envio dos XLSX condicionado à confirmação do operador. O CI GitHub não substitui comprovação de publicação na Cloudflare.
+- Em caso de falha: consultar Cloudflare → Worker → Deployments → Build history / Previews e copiar o erro, sem alterar produção.
