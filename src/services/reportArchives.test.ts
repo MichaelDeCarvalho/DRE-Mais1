@@ -7,7 +7,8 @@ const mocked = vi.hoisted(() => ({
   select: vi.fn(),
   eq: vi.fn(),
   single: vi.fn(),
-  upload: vi.fn()
+  upload: vi.fn(),
+  previewXlsxFiles: vi.fn()
 }));
 
 vi.mock('../supabase/client', () => ({
@@ -17,6 +18,10 @@ vi.mock('../supabase/client', () => ({
     from: mocked.fromTable,
     storage: { from: mocked.fromStorage }
   }
+}));
+
+vi.mock('../importPreview', () => ({
+  previewXlsxFiles: mocked.previewXlsxFiles
 }));
 
 import { archiveObjectPath, sha256Hex, stageMonthlyReportFiles } from './reportArchives';
@@ -38,10 +43,11 @@ beforeEach(() => {
   mocked.select.mockReturnValue({ eq: mocked.eq });
   mocked.eq.mockReturnValue({ eq: mocked.eq, single: mocked.single });
   mocked.single.mockResolvedValue({
-    data: { id: periodId, store_id: storeId, status: 'DRAFT' }, error: null
+    data: { id: periodId, store_id: storeId, status: 'DRAFT', year_month: '2026-09' }, error: null
   });
   mocked.fromStorage.mockReturnValue({ upload: mocked.upload });
   mocked.upload.mockResolvedValue({ error: null });
+  mocked.previewXlsxFiles.mockResolvedValue({ period: '2026-09', reconciled: true });
 });
 
 describe('arquivo original XLSX privado (não executa importação)', () => {
@@ -88,6 +94,7 @@ describe('arquivo original XLSX privado (não executa importação)', () => {
     expect(result.files[0].kind).toBe('PRODUCTS');
     expect(result.files[1].kind).toBe('PAYMENTS');
     expect(mocked.fromStorage).toHaveBeenCalledWith('dre-mais1-report-archives');
+    expect(mocked.previewXlsxFiles).toHaveBeenCalledWith(products, payments, '2026-09');
     expect(mocked.upload).toHaveBeenCalledTimes(2);
     for (const call of mocked.upload.mock.calls) {
       expect(call[0]).toMatch(/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/(PRODUCTS|PAYMENTS)\/[a-f0-9]{64}\.xlsx$/);
@@ -95,6 +102,28 @@ describe('arquivo original XLSX privado (não executa importação)', () => {
     }
     expect(mocked.fromTable).toHaveBeenCalledTimes(1);
     expect(mocked.fromTable).toHaveBeenCalledWith('periods');
+  });
+
+  it('não arquiva XLSX se a pré-validação identificar mês divergente', async () => {
+    mocked.previewXlsxFiles.mockRejectedValueOnce(
+      new Error('Competência do pagamento divergente em Formas!L2.')
+    );
+    const { products, payments } = files();
+    await expect(stageMonthlyReportFiles(storeId, periodId, products, payments))
+      .rejects.toThrow('Competência do pagamento divergente');
+    expect(mocked.previewXlsxFiles).toHaveBeenCalledWith(products, payments, '2026-09');
+    expect(mocked.fromStorage).not.toHaveBeenCalled();
+    expect(mocked.upload).not.toHaveBeenCalled();
+  });
+
+  it('não arquiva XLSX com coluna obrigatória ausente antes do upload', async () => {
+    mocked.previewXlsxFiles.mockRejectedValueOnce(
+      new Error('Não foi encontrado cabeçalho válido no relatório de produtos.')
+    );
+    const { products, payments } = files();
+    await expect(stageMonthlyReportFiles(storeId, periodId, products, payments))
+      .rejects.toThrow('cabeçalho válido');
+    expect(mocked.upload).not.toHaveBeenCalled();
   });
 
   it('falha sem anunciar importação quando segundo upload é rejeitado', async () => {
