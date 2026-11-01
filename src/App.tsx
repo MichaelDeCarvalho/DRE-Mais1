@@ -7,7 +7,7 @@ import { parseQuantityMilliBase } from './quantity';
 import { findRecipeCandidates, recipeStatusLabel } from './recipe_selection';
 import { validatedDreMetrics } from './dre_reference';
 import type { ImportSummary, CatalogImportSummary, CatalogStatus, MappingOverview } from './types';
-import { SaaSAuthHeader } from './components/SaaSAuthHeader';
+import { SaaSAuthHeader, type AppMode } from './components/SaaSAuthHeader';
 import type { Store } from './supabase/types';
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1).padStart(2, '0'), label: new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2026, i, 1))) }));
@@ -27,6 +27,7 @@ function initialTheme(): ThemePreference {
 }
 export function App() {
   const [currentStore, setCurrentStore] = useState<Store | null>(null);
+  const [appMode, setAppMode] = useState<AppMode>('SAAS');
   const [themePreference, setThemePreference] = useState<ThemePreference>(initialTheme);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true);
   const [activeSection, setActiveSection] = useState('period-heading');
@@ -488,10 +489,57 @@ export function App() {
   const visibleProducts = result?.unmappedProducts.filter((p) => `${p.externalCode} ${p.name} ${p.category}`.toLocaleLowerCase('pt-BR').includes(filter.toLocaleLowerCase('pt-BR'))) || [];
   return (
     <>
-      <SaaSAuthHeader onStoreChange={(store) => setCurrentStore(store)} />
+      <SaaSAuthHeader
+        onStoreChange={(store) => setCurrentStore(store)}
+        onModeChange={(mode) => setAppMode(mode)}
+      />
+
+      {appMode === 'SAAS' && !currentStore ? (
+        <div style={{
+          minHeight: 'calc(100vh - 60px)',
+          background: 'var(--app-bg, #0d1420)',
+          color: 'var(--app-text, #f1f6fc)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '40px 20px',
+          textAlign: 'center'
+        }}>
+          <div style={{
+            background: 'var(--app-surface, #172233)',
+            border: '1px solid var(--app-border, #304158)',
+            borderRadius: '16px',
+            padding: '36px 32px',
+            maxWidth: '520px',
+            width: '100%',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{
+              background: '#167d73',
+              color: '#fff',
+              width: '56px',
+              height: '56px',
+              borderRadius: '16px',
+              display: 'grid',
+              placeItems: 'center',
+              fontSize: '28px',
+              fontWeight: 800,
+              margin: '0 auto 20px'
+            }}>D</div>
+            <h2 style={{ fontSize: '22px', margin: '0 0 10px 0' }}>Autenticação e Loja Necessárias</h2>
+            <p style={{ color: 'var(--app-muted, #a9b8cb)', fontSize: '13px', lineHeight: '1.6', margin: '0 0 24px 0' }}>
+              Para acessar os relatórios financeiros, conciliações e DRE operacional da sua franquia em ambiente SaaS, faça login no topo da página e selecione uma loja autorizada.
+            </p>
+            <p style={{ color: '#eab308', fontSize: '12px', background: '#3b2d11', padding: '10px 14px', borderRadius: '8px', border: '1px solid #715214', margin: '0 0 20px 0' }}>
+              ℹ️ Nenhum dado simulado ou demonstrativo é carregado automaticamente em produção.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>Gestão financeira offline</small></div></div>
+        <div className="brand"><div className="brand-mark">D</div><div><strong>DRE Mais1</strong><small>{appMode === 'DEMO' ? 'Modo Demonstração' : 'Gestão Financeira SaaS'}</small></div></div>
         <nav aria-label="Navegação principal" className="app-nav">
           {[
             ['period-heading','Competência'],['catalog-heading','Catálogo'],['ingredient-heading','Insumos'],['recipe-heading','Fichas técnicas'],
@@ -499,10 +547,10 @@ export function App() {
             ['parameters-heading','Parâmetros financeiros'],['validated-dre-heading','DRE da planilha'],['appearance-heading','Aparência'],
           ].map(([id,label]) => <button key={id} type="button" className={activeSection === id ? 'nav-link nav-active' : 'nav-link'} onClick={() => navigate(id)}>{label}</button>)}
         </nav>
-        <div className="sidebar-bottom"><span className="status-dot" /> Dados armazenados localmente <small>DRE em validação · Sem fechamento definitivo</small></div>
+        <div className="sidebar-bottom"><span className="status-dot" /> {appMode === 'DEMO' ? 'Dados Sintéticos Demonstrativos' : `Loja: ${currentStore?.display_name || 'Autorizada'}`} <small>DRE em validação · Fechamento auditável</small></div>
       </aside>
       <main className="content">
-        <header className="page-header"><div><span className="eyebrow">VISÃO GERENCIAL SAAS</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas por competência e loja. Fechamento gerencial auditável.</p></div><div className="header-tag">{currentStore ? `Loja: ${currentStore.display_name}` : 'Unidade Franquia'}</div></header>
+        <header className="page-header"><div><span className="eyebrow">{appMode === 'DEMO' ? 'DEMONSTRAÇÃO ISOLADA' : 'VISÃO GERENCIAL SAAS'}</span><h1>DRE Mais1</h1><p>Vendas, custos e despesas por competência e loja. Fechamento gerencial auditável.</p></div><div className="header-tag">{currentStore ? `Loja: ${currentStore.display_name}` : 'Unidade Franquia'}</div></header>
         <section className="section-block" aria-labelledby="period-heading">
           <div className="section-heading"><span className="step">01</span><div><h2 id="period-heading">Período de referência</h2><p>O mês selecionado deve coincidir com o período indicado pelos pagamentos.</p></div></div>
           <div className="selectors"><label>Ano<input type="text" inputMode="numeric" maxLength={4} value={year} disabled={busy} onChange={(e) => { clearPeriodViews(true); setYear(e.target.value); }} aria-label="Ano" /></label><label>Mês<select value={month} disabled={busy} onChange={(e) => { clearPeriodViews(true); setMonth(e.target.value); }} aria-label="Mês">{months.map(m => <option key={m.value} value={m.value}>{m.label[0].toUpperCase() + m.label.slice(1)}</option>)}</select></label><div className="selected-period">Competência <strong>{periodLabel(period)}</strong></div><button type="button" className="primary-button" disabled={busy || !/^20\d\d$/.test(year)} onClick={loadSaved}>{pending?'Consultando todos os módulos…':'Consultar competência'}</button></div>
@@ -766,6 +814,7 @@ export function App() {
         <footer>DRE Mais1 · Dados locais · Fechamento gerencial condicionado à conferência</footer>
       </main>
     </div>
+    )}
     </>
   );
 }
