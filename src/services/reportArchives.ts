@@ -6,6 +6,7 @@
  * O Storage e o PostgreSQL não compartilham uma transação distribuída.
  */
 import { isSupabaseConfigured, supabase } from '../supabase/client';
+import { previewXlsxFiles } from '../importPreview';
 
 export type MonthlyReportKind = 'PRODUCTS' | 'PAYMENTS';
 
@@ -86,7 +87,7 @@ export async function stageMonthlyReportFiles(
   // RLS valida que o período é visível para o usuário.
   // O Storage reforça manager/owner, loja e DRAFT no momento do upload.
   const { data: period, error: periodError } = await supabase.from('periods')
-    .select('id, store_id, status')
+    .select('id, store_id, status, year_month')
     .eq('id', periodId)
     .eq('store_id', storeId)
     .single();
@@ -94,6 +95,11 @@ export async function stageMonthlyReportFiles(
   if (periodError || !period || period.status !== 'DRAFT') {
     throw new Error('Competência inexistente, inacessível ou não está em rascunho.');
   }
+
+  // Pré-validação de layout, competência e centavos ANTES de qualquer escrita no
+  // Storage. A competência vem do PostgreSQL, nunca de um parâmetro não confiável.
+  // Isto NÃO substitui o parser autoritativo no backend antes do commit financeiro.
+  await previewXlsxFiles(products, payments, period.year_month);
 
   const originals: Array<{ kind: MonthlyReportKind; file: File }> = [
     { kind: 'PRODUCTS', file: products },
