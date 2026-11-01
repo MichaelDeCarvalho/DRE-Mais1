@@ -69,21 +69,3 @@ jobs:
           grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_cors_headers
           grep -E -iq '^access-control-allow-origin: https://dre-mais1-homologacao.corsys1.workers.dev' /tmp/dre_cors_headers
 
-  storage-http-integration:
-    name: E2E Storage + Edge JWT (somente disparo manual na PR 5)
-    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'feat/saas-import-transaction-20261101'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm install --no-audit --no-fund
-      - name: Homologar arquivos reais com identidade de testes (nenhum commit SQL)
-        env:
-          DRE_E2E_EMAIL: ${{ secrets.DRE_E2E_EMAIL }}
-          DRE_E2E_PASSWORD: ${{ secrets.DRE_E2E_PASSWORD }}
-          DRE_E2E_PUBLISHABLE_KEY: ${{ secrets.DRE_E2E_PUBLISHABLE_KEY }}
-          DRE_E2E_CONFIRM_UPLOAD: YES_SJP_2026_09
-        run: node scripts/homologate-storage-readonly.mjs
