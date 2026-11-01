@@ -8,6 +8,7 @@ const mocked = vi.hoisted(() => ({
   eq: vi.fn(),
   single: vi.fn(),
   upload: vi.fn(),
+  download: vi.fn(),
   previewXlsxFiles: vi.fn()
 }));
 
@@ -45,7 +46,8 @@ beforeEach(() => {
   mocked.single.mockResolvedValue({
     data: { id: periodId, store_id: storeId, status: 'DRAFT', year_month: '2026-09' }, error: null
   });
-  mocked.fromStorage.mockReturnValue({ upload: mocked.upload });
+  mocked.fromStorage.mockReturnValue({ upload: mocked.upload, download: mocked.download });
+  mocked.download.mockResolvedValue({ data: null, error: { message: 'not found' } });
   mocked.upload.mockResolvedValue({ error: null });
   mocked.previewXlsxFiles.mockResolvedValue({ period: '2026-09', reconciled: true });
 });
@@ -134,4 +136,26 @@ describe('arquivo original XLSX privado (não executa importação)', () => {
       .rejects.toThrow('nenhuma linha financeira foi importada');
     expect(mocked.upload).toHaveBeenCalledTimes(2);
   });
+  it('permite retry somente quando o objeto arquivado é byte a byte idêntico', async () => {
+    const { products, payments } = files();
+    mocked.upload.mockResolvedValueOnce({ error: { message: 'already exists' } })
+      .mockResolvedValueOnce({ error: null });
+    mocked.download.mockResolvedValueOnce({ data: products, error: null });
+    const staged = await stageMonthlyReportFiles(storeId, periodId, products, payments);
+    expect(staged.state).toBe('FILES_STAGED_NOT_IMPORTED');
+    expect(mocked.download).toHaveBeenCalledTimes(1);
+    expect(mocked.upload).toHaveBeenCalledTimes(2);
+  });
+
+  it('não aceita objeto de mesmo caminho se bytes baixados forem adulterados', async () => {
+    const { products, payments } = files();
+    mocked.upload.mockResolvedValueOnce({ error: { message: 'already exists' } });
+    mocked.download.mockResolvedValueOnce({
+      data: new File(['example xlsx x'], 'produtos.xlsx'), error: null
+    });
+    await expect(stageMonthlyReportFiles(storeId, periodId, products, payments))
+      .rejects.toThrow('nenhuma linha financeira foi importada');
+    expect(mocked.upload).toHaveBeenCalledTimes(1);
+  });
+
 });
