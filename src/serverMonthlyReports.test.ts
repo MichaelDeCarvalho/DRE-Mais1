@@ -47,7 +47,7 @@ describe('parser autoritativo de XLSX (contrato backend)',()=>{
     expect(()=>parseMonthlyReports(p,[{sheet:'x',data:[['Método de Pagamento','Total'],['09/2026 - Desconhecido',10]]}],'2026-09')).toThrow('Método desconhecido');
     expect(()=>cents('1.234','valor')).toThrow('Moeda');
     expect(()=>cents('1,234','valor')).toThrow('Moeda');
-    expect(()=>cents('-3.426,07','valor')).toBe(-342607);
+    expect(cents('-3.426,07','valor')).toBe(-342607);
   });
   it('rejeita cabeçalho duplicado e preserva diferenças sem chamar de conciliação',()=>{
     const [p,f]=minimal();
