@@ -123,12 +123,22 @@ export async function stageMonthlyReportFiles(
       });
 
     if (error) {
-      // O objeto anterior pode permanecer guardado. A limpeza de órfãos é
-      // responsabilidade de um serviço administrativo auditado, NÃO do browser.
-      throw new Error(
-        `Falha ao arquivar ${item.kind}: ${error.message}. ` +
-        `Arquivos anteriores podem ter sido armazenados; nenhuma linha financeira foi importada.`
-      );
+      // Um retry pode encontrar exatamente o mesmo objeto (ou um upload que
+      // concluiu no servidor mas cuja resposta se perdeu). Reutilizar somente
+      // quando o download privado confirmar tamanho e SHA-256 idênticos.
+      // Jamais substituir objetos existentes: upsert permanece false.
+      const { data: existing, error: downloadError } = await supabase.storage
+        .from(BUCKET).download(item.path);
+      const matchesOriginal = !downloadError && !!existing &&
+        existing.size === item.file.size &&
+        await sha256Hex(await existing.arrayBuffer()) === item.sha256;
+      if (!matchesOriginal) {
+        // Limpeza de órfãos exige serviço administrativo auditável, não browser.
+        throw new Error(
+          `Falha ao arquivar ${item.kind}: ${error.message}. ` +
+          `Arquivos anteriores podem ter sido armazenados; nenhuma linha financeira foi importada.`
+        );
+      }
     }
 
     staged.push({
