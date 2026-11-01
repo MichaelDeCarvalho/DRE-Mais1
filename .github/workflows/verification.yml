@@ -46,3 +46,12 @@ jobs:
         run: |
           deno check supabase/functions/validate-monthly-reports/index.ts
           deno check supabase/functions/commit-monthly-reports/index.ts
+
+      - name: Smoke HTTP — Edge validação exige autenticação (PR 5)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          status=$(curl -sS --max-time 20 -o /tmp/dre_mais1_edge_auth.json -w '%{http_code}' \
+            -X POST 'https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/validate-monthly-reports' \
+            -H 'Content-Type: application/json' --data '{}')
+          echo "HTTP unauthenticated: $status"
+          test "$status" = '401'
