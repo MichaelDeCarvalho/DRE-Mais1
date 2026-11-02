@@ -1,8 +1,7 @@
 /**
- * Fluxo financeiro futuro: chama SOMENTE Edge autenticada, nunca tabelas via browser.
- *
- * PREPARADO, NÃO ATIVADO: nenhuma UI invoca este módulo enquanto migration e
- * Edge de commit não estiverem homologadas. Não contém chave service_role.
+ * Fluxo de commit somente pela Edge autenticada, sem escrita direta pelo browser.
+ * UI: VITE_ENABLE_FINANCIAL_COMMIT; servidor: FINANCIAL_COMMIT_ENABLED.
+ * Ambos desativados por padrão. Não contém chave service_role.
  */
 import {isSupabaseConfigured,supabase} from '../supabase/client';
 import {archiveObjectPath,type ArchiveBatchResult} from './reportArchives';
