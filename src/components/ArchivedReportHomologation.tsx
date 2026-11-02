@@ -6,7 +6,11 @@ import {
   type MonthlyArchiveValidation
 } from '../services/archiveValidation';
 import {brl} from '../format';
-import {commitValidatedMonthlyArchive,type MonthlyCommitResult} from '../services/financialCommit';
+import {
+  commitValidatedMonthlyArchive,
+  verifyFinancialCommitBlocked,
+  type MonthlyCommitResult
+} from '../services/financialCommit';
 
 const FINANCIAL_COMMIT_UI_ENABLED = import.meta.env.VITE_ENABLE_FINANCIAL_COMMIT === 'true';
 
@@ -30,6 +34,8 @@ export function ArchivedReportHomologation({
   const [committing,setCommitting] = useState(false);
   const [commitResult,setCommitResult] = useState<MonthlyCommitResult | null>(null);
   const [commitError,setCommitError] = useState('');
+  const [lockTest,setLockTest] = useState<'idle'|'running'|'passed'|'failed'>('idle');
+  const [lockError,setLockError] = useState('');
   useEffect(()=>{
     setApproved(false);
     setResult(null);
@@ -37,6 +43,8 @@ export function ArchivedReportHomologation({
     setCommitApproved(false);
     setCommitResult(null);
     setCommitError('');
+    setLockTest('idle');
+    setLockError('');
   },[storeId,period?.id,productsFile,paymentsFile,preview]);
 
   const eligible = Boolean(
@@ -80,8 +88,36 @@ export function ArchivedReportHomologation({
     }
   }
 
+  async function testCommitLock() {
+    if(lockTest==='running' || busy || committing) return;
+    setLockTest('running');
+    setLockError('');
+    try {
+      await verifyFinancialCommitBlocked();
+      setLockTest('passed');
+    } catch(e) {
+      setLockTest('failed');
+      setLockError(e instanceof Error ? e.message : 'Bloqueio não comprovado.');
+    }
+  }
+
   return <div className="feedback feedback-info" aria-label="Homologação de arquivos originais no servidor">
     <strong>Homologação privada — sessão da conta atual</strong>
+    <div className="feedback feedback-info" aria-label="Teste de bloqueio financeiro">
+      <strong>Teste de segurança: Edge financeira bloqueada</strong>
+      <p>Envia uma solicitação sintética usando a sessão Supabase atual,
+        sem XLSX, identificadores reais ou lançamento financeiro.
+        O único resultado aprovado é HTTP 423 com a mensagem de bloqueio.</p>
+      <button type="button" className="outline-button"
+        disabled={lockTest==='running'||busy||committing} onClick={testCommitLock}>
+        {lockTest==='running' ? 'Verificando bloqueio…' : 'Testar bloqueio financeiro (sem gravação)'}
+      </button>
+      {lockTest==='passed' && <p role="status">Bloqueio confirmado: HTTP 423 após
+        validação da sessão. A função financeira permanece desativada.</p>}
+      {lockTest==='failed' && <p role="alert" className="feedback feedback-error">
+        {lockError}
+      </p>}
+    </div>
     <p>Esta opção envia os dois XLSX para o Storage privado e os revalida no
        Supabase. <b>Não importa vendas ou pagamentos para o PostgreSQL.</b></p>
     <p>Os arquivos arquivados não podem ser apagados nesta interface; uma falha
