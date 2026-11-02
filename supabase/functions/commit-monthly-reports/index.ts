@@ -1,6 +1,7 @@
 /**
  * DRE Mais1: importação persistente no backend.
- * NÃO IMPLANTAR até homologação de HTTP Storage, Auth e transação SQL.
+ * Homologação: deploy seguro com FINANCIAL_COMMIT_ENABLED desativado por padrão.
+ * NÃO liberar a escrita financeira sem autorização específica.
  * A única RPC de escrita recebe linhas de bytes validados pela própria Edge Function.
  */
 import {createClient} from 'npm:@supabase/supabase-js@2.118.0';
