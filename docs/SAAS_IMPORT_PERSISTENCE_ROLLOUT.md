@@ -108,3 +108,11 @@
 - **Edge de gravação `commit-monthly-reports` NÃO implantada**. A Edge ativa permanece somente `validate-monthly-reports` v2, `verify_jwt=true`. UI ainda não chama a importação financeira.
 - Advisor Supabase mantém aviso pré-existente `auth_leaked_password_protection` (proteção contra senhas vazadas desabilitada), não introduzido pela RPC; nenhuma alteração em configurações de Auth foi autorizada.
 - **Próxima decisão separada:** autorizar, após revisão do fluxo, implantação controlada da Edge de commit e primeiro lançamento real dos dados. Instalar a RPC não equivale a autorizar essas ações.
+
+## Incremento ITEM 1 — continuidade 01/11/2026 (sem lançamento real)
+- HEAD anterior da PR #5 confirmado em `f7ff857`, PR permanece DRAFT; `main` intocada.
+- `commit-monthly-reports` implantada v1 SOMENTE no projeto Supabase `mgtovbvnbkzrdytudynf`, `verify_jwt=true`, com gate obrigatório `FINANCIAL_COMMIT_ENABLED==='true'` (ausente/desativado por padrão). Sem ele, requisições autenticadas recebem HTTP 423 antes de leitura financeira/RPC.
+- `ArchivedReportHomologation` tem segundo consentimento independente, condicionado a `VITE_ENABLE_FINANCIAL_COMMIT=true`; o comando padrão `build:preview` NÃO o habilita. Edge e frontend devem ser liberados separadamente depois de autorização.
+- CI commit `887ee08`: sucesso em Vitest, TypeScript/Vite e Deno. Smoke de Auth/CORS da nova Edge adicionado na sequência e sujeito ao CI da revisão correspondente.
+- Verificação SQL somente-leitura: 0 `imports`, 0 linhas, setembro/2026 `DRAFT`.
+- PENDENTE: HTTP autenticado com OWNER para gate 423, teste positivo de persistência/idempotência concorrente, consistência após falha e aprovação específica do primeiro lançamento financeiro real. Não mudar gate, nem afirmar que o fluxo positivo está homologado, antes da autorização.
