@@ -74,6 +74,16 @@ describe('contrato de importação financeira ainda não ativado na UI',()=>{
     ]},validated)).rejects.toThrow('Metadados');
     expect(mock.invoke).not.toHaveBeenCalled();
   });
+  it('recusa status divergente ou resposta de commit incompleto',async()=>{
+    mock.invoke.mockResolvedValueOnce({data:{...response,state:'IMPORTED_DIVERGENT'},error:null});
+    await expect(commitValidatedMonthlyArchive(archive,validated)).rejects.toThrow('não confirmada');
+    mock.invoke.mockResolvedValueOnce({data:{...response,productImportId:null},error:null});
+    await expect(commitValidatedMonthlyArchive(archive,validated)).rejects.toThrow('IDs de importação');
+  });
+  it('falha com erro HTTP de função ainda bloqueada (423)',async()=>{
+    mock.invoke.mockResolvedValueOnce({data:null,error:{status:423,message:'Locked'}});
+    await expect(commitValidatedMonthlyArchive(archive,validated)).rejects.toThrow('Consulte o histórico');
+  });
   it('não declara sucesso de gravação com erro de resposta',async()=>{
     mock.invoke.mockResolvedValueOnce({data:null,error:{message:'timeout'}});
     await expect(commitValidatedMonthlyArchive(archive,validated))
