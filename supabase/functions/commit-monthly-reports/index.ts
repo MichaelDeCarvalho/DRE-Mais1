@@ -72,6 +72,11 @@ Deno.serve(async(req:Request):Promise<Response>=>{
     });
     const {data:userData,error:userError}=await db.auth.getUser(match[1]);
     if(userError||!userData.user) return json(401,{error:'Sessão inválida.'});
+    // Ativação dupla: o deploy em homologação é inerte por padrão.
+    // Somente uma configuração server-side explícita permite escrita pela RPC.
+    if(Deno.env.get('FINANCIAL_COMMIT_ENABLED')!=='true') {
+      return json(423,{error:'Importação financeira ainda não ativada.'});
+    }
 
     const {data:store,error:storeError}=await db.from('stores')
       .select('id,organization_id').eq('id',storeId).single();
