@@ -91,3 +91,24 @@ jobs:
           if grep -E -iq '^access-control-allow-origin:' /tmp/dre_bad_headers; then
             echo 'Origem não confiável recebeu CORS'; exit 1
           fi
+
+      - name: Smoke HTTP — Edge commit exige autenticação e CORS isolado (PR 5)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          url='https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/commit-monthly-reports'
+          status=$(curl -sS --max-time 20 -o /tmp/dre_commit_anon -w '%{http_code}' \
+            -X POST "$url" -H 'Content-Type: application/json' --data '{}')
+          echo "Commit anonymous HTTP: $status"
+          test "$status" = '401'
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_commit_qa_headers \
+            -X OPTIONS "$url" \
+            -H 'Origin: https://feat-saas-import-transaction-20261101-dre-mais1-homologacao.corsys1.workers.dev' \
+            -H 'Access-Control-Request-Method: POST'
+          grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_commit_qa_headers
+          grep -E -iq '^access-control-allow-origin: https://feat-saas-import-transaction-20261101-dre-mais1-homologacao.corsys1.workers.dev' /tmp/dre_commit_qa_headers
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_commit_bad_headers \
+            -X OPTIONS "$url" \
+            -H 'Origin: https://attacker.example' -H 'Access-Control-Request-Method: POST'
+          if grep -E -iq '^access-control-allow-origin:' /tmp/dre_commit_bad_headers; then
+            echo 'Commit autorizou origem CORS não confiável'; exit 1
+          fi
