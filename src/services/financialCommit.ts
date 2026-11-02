@@ -78,3 +78,40 @@ export async function commitValidatedMonthlyArchive(
   }
   return got as unknown as MonthlyCommitResult;
 }
+
+/**
+ * Prova HTTP negativa usando o JWT da sessão atual, sem arquivos reais.
+ * Identificadores e SHA sintéticos impedem escrita mesmo se o gate for
+ * acidentalmente liberado. PASS exige resposta 423 após validação do JWT.
+ */
+export async function verifyFinancialCommitBlocked():Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase não configurado.');
+  }
+  const storeId='00000000-0000-4000-8000-000000000000';
+  const periodId='00000000-0000-4000-8000-000000000001';
+  const productsPath=archiveObjectPath(storeId,periodId,'PRODUCTS','0'.repeat(64));
+  const paymentsPath=archiveObjectPath(storeId,periodId,'PAYMENTS','1'.repeat(64));
+  const {data,error}=await supabase.functions.invoke('commit-monthly-reports',{
+    body:{
+      storeId,periodId,productsPath,paymentsPath,
+      productsFilename:'probe-products.xlsx',
+      paymentsFilename:'probe-payments.xlsx'
+    }
+  });
+  // Não confundir um HTTP 401/403/500 ou 200 com bloqueio comprovado.
+  const response=error?.context;
+  if(!(response instanceof Response) || response.status!==423 || data) {
+    throw new Error('Bloqueio HTTP 423 não comprovado. Não liberar importação financeira.');
+  }
+  let payload:unknown;
+  try {
+    payload=await response.clone().json();
+  } catch {
+    throw new Error('Resposta HTTP 423 inválida. Não liberar importação financeira.');
+  }
+  if(!payload || typeof payload!=='object' ||
+     (payload as {error?:unknown}).error!=='Importação financeira ainda não ativada.') {
+    throw new Error('Resposta do bloqueio inesperada. Não liberar importação financeira.');
+  }
+}
