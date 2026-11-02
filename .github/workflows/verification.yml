@@ -36,3 +36,79 @@ jobs:
 
       - name: Typecheck e Build Vite
         run: npm run build
+
+      - name: Build de homologação com painel OWNER habilitado (sem deploy)
+        run: npm run build:preview
+
+      - name: Instalar Deno para checagem do backend (sem deploy)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: lts
+
+      - name: Typecheck da Edge Function de validação
+        run: |
+          deno check supabase/functions/validate-monthly-reports/index.ts
+          deno check supabase/functions/commit-monthly-reports/index.ts
+
+      - name: Testes XLSX reais no runtime Deno
+        run: deno test --allow-read supabase/functions/_shared/parseMonthlyReports.deno_test.ts
+
+      - name: Smoke HTTP — Edge validação exige autenticação (PR 5)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          status=$(curl -sS --max-time 20 -o /tmp/dre_mais1_edge_auth.json -w '%{http_code}' \
+            -X POST 'https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/validate-monthly-reports' \
+            -H 'Content-Type: application/json' --data '{}')
+          echo "HTTP unauthenticated: $status"
+          test "$status" = '401'
+
+      - name: Smoke HTTP — preflight CORS da Edge (PR 5)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          curl -sS --max-time 20 -o /tmp/dre_cors_body -D /tmp/dre_cors_headers \
+            -X OPTIONS 'https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/validate-monthly-reports' \
+            -H 'Origin: https://dre-mais1-homologacao.corsys1.workers.dev' \
+            -H 'Access-Control-Request-Method: POST'
+          grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_cors_headers
+          grep -E -iq '^access-control-allow-origin: https://dre-mais1-homologacao.corsys1.workers.dev' /tmp/dre_cors_headers
+
+
+      - name: Smoke HTTP — CORS prévia da branch e negação de origem externa
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          url='https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/validate-monthly-reports'
+          qa='https://qa-dre-mais1-homologacao.corsys1.workers.dev'
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_qa_headers \
+            -X OPTIONS "$url" \
+            -H "Origin: $qa" \
+            -H 'Access-Control-Request-Method: POST'
+          grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_qa_headers
+          grep -E -iq "^access-control-allow-origin: $qa" /tmp/dre_qa_headers
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_bad_headers \
+            -X OPTIONS "$url" \
+            -H 'Origin: https://attacker.example' \
+            -H 'Access-Control-Request-Method: POST'
+          if grep -E -iq '^access-control-allow-origin:' /tmp/dre_bad_headers; then
+            echo 'Origem não confiável recebeu CORS'; exit 1
+          fi
+
+      - name: Smoke HTTP — Edge commit exige autenticação e CORS isolado (PR 5)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 5
+        run: |
+          url='https://mgtovbvnbkzrdytudynf.supabase.co/functions/v1/commit-monthly-reports'
+          status=$(curl -sS --max-time 20 -o /tmp/dre_commit_anon -w '%{http_code}' \
+            -X POST "$url" -H 'Content-Type: application/json' --data '{}')
+          echo "Commit anonymous HTTP: $status"
+          test "$status" = '401'
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_commit_qa_headers \
+            -X OPTIONS "$url" \
+            -H 'Origin: https://feat-saas-import-transaction-20261101-dre-mais1-homologacao.corsys1.workers.dev' \
+            -H 'Access-Control-Request-Method: POST'
+          grep -E -iq '^HTTP/[0-9.]+ 204' /tmp/dre_commit_qa_headers
+          grep -E -iq '^access-control-allow-origin: https://feat-saas-import-transaction-20261101-dre-mais1-homologacao.corsys1.workers.dev' /tmp/dre_commit_qa_headers
+          curl -sS --max-time 20 -o /dev/null -D /tmp/dre_commit_bad_headers \
+            -X OPTIONS "$url" \
+            -H 'Origin: https://attacker.example' -H 'Access-Control-Request-Method: POST'
+          if grep -E -iq '^access-control-allow-origin:' /tmp/dre_commit_bad_headers; then
+            echo 'Commit autorizou origem CORS não confiável'; exit 1
+          fi
