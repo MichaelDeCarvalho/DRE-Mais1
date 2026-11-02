@@ -4,7 +4,7 @@ vi.mock('../supabase/client',()=>({
   isSupabaseConfigured:true,
   supabase:{functions:{invoke:mock.invoke}}
 }));
-import {commitValidatedMonthlyArchive} from './financialCommit';
+import {commitValidatedMonthlyArchive,verifyFinancialCommitBlocked} from './financialCommit';
 import type {ArchiveBatchResult} from './reportArchives';
 import type {ServerArchiveValidation} from './archiveValidation';
 
@@ -93,5 +93,46 @@ describe('contrato de importação financeira ainda não ativado na UI',()=>{
     mock.invoke.mockResolvedValueOnce({data:{...response,paymentsTotalCents:2494464},error:null});
     await expect(commitValidatedMonthlyArchive(archive,validated))
       .rejects.toThrow('inconsistente');
+  });
+});
+
+describe('prova negativa do bloqueio da Edge com sessão do navegador',()=>{
+  const lockMessage='Importação financeira ainda não ativada.';
+  it('aceita somente HTTP 423 com corpo de bloqueio exato',async()=>{
+    const context=new Response(JSON.stringify({error:lockMessage}),{
+      status:423,headers:{'content-type':'application/json'}
+    });
+    mock.invoke.mockResolvedValueOnce({data:null,error:{context}});
+    await expect(verifyFinancialCommitBlocked()).resolves.toBeUndefined();
+    expect(mock.invoke).toHaveBeenCalledExactlyOnceWith('commit-monthly-reports',{
+      body:{
+        storeId:'00000000-0000-4000-8000-000000000000',
+        periodId:'00000000-0000-4000-8000-000000000001',
+        productsPath:'00000000-0000-4000-8000-000000000000/00000000-0000-4000-8000-000000000001/PRODUCTS/'+a.replace(/a/g,'0')+'.xlsx',
+        paymentsPath:'00000000-0000-4000-8000-000000000000/00000000-0000-4000-8000-000000000001/PAYMENTS/'+b.replace(/b/g,'1')+'.xlsx',
+        productsFilename:'probe-products.xlsx',
+        paymentsFilename:'probe-payments.xlsx'
+      }
+    });
+  });
+  it('não aprova HTTP 401, 403 ou 200 e não envia XLSX reais',async()=>{
+    for(const status of [401,403]){
+      mock.invoke.mockResolvedValueOnce({
+        data:null,error:{context:new Response(JSON.stringify({error:'Unauthorized'}),{status})}
+      });
+      await expect(verifyFinancialCommitBlocked()).rejects.toThrow('423 não comprovado');
+    }
+    mock.invoke.mockResolvedValueOnce({data:{state:'IMPORTED'},error:null});
+    await expect(verifyFinancialCommitBlocked()).rejects.toThrow('423 não comprovado');
+  });
+  it('não aprova resposta 423 inesperada ou inválida',async()=>{
+    mock.invoke.mockResolvedValueOnce({
+      data:null,error:{context:new Response(JSON.stringify({error:'Outro estado'}),{status:423})}
+    });
+    await expect(verifyFinancialCommitBlocked()).rejects.toThrow('inesperada');
+    mock.invoke.mockResolvedValueOnce({
+      data:null,error:{context:new Response('não é JSON',{status:423})}
+    });
+    await expect(verifyFinancialCommitBlocked()).rejects.toThrow('inválida');
   });
 });
