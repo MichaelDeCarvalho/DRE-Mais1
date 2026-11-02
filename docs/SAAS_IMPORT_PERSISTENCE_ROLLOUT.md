@@ -125,3 +125,11 @@
 - No Preview da PR #5, o operador precisa entrar na sessão OWNER existente, selecionar SJP e clicar o botão. A tela apresenta sucesso ou erro sem expor credenciais. Registrar o resultado antes de liberar qualquer commit financeiro.
 - A Edge implantada permanece com `verify_jwt=true`, `FINANCIAL_COMMIT_ENABLED` desativado, sem lançamento. Esta prova negativa **não** equivale a teste de escrita/idempotência concorrente.
 - CI de regressão desta alteração: `src/services/financialCommit.test.ts` e etapas afetadas do workflow existente. A comprovação do teste manual OWNER fica pendente até executar o botão na Preview atualizada.
+
+## Item 1 — aceite do teste HTTP 423 com OWNER (confirmação recebida no chat)
+
+- **Resultado reportado pelo proprietário após executar o botão da Preview autenticada:** **"Bloqueio confirmado"**. A mensagem de sucesso só é apresentada pela UI quando a chamada `verifyFinancialCommitBlocked` aceita `HTTP 423` com o corpo esperado. Evidência: confirmação manual do operador neste diálogo; não foi capturado log HTTP independente desta sessão. Classificação: **ACEITE MANUAL REPORTADO**, não teste positivo de gravação.
+- Revisão publicada antes do teste: `f21391d`, Build/Deployment Cloudflare **Success**, CI GitHub Actions `41367833346` **Success**. A URL estável da Preview é `https://feat-saas-import-transaction-20261101-dre-mais1-homologacao.corsys1.workers.dev`.
+- Após o relato, consulta SQL de **somente leitura** no projeto de homologação `mgtovbvnbkzrdytudynf` confirmou: `imports=0`, `import_product_rows=0`, `import_payment_rows=0`, competência `2026-09 = DRAFT`.
+- Concluído: verificação negativa manual do gate financeiro pela sessão OWNER. **Não** confundir com validação positiva da persistência, concorrência e idempotência HTTP.
+- Próxima etapa **aguarda autorização específica** do proprietário para habilitar os gates exclusivamente em homologação e executar a primeira importação real da competência 2026-09. Até lá, não configurar `FINANCIAL_COMMIT_ENABLED=true`, não configurar `VITE_ENABLE_FINANCIAL_COMMIT=true`, não realizar lançamento financeiro, não publicar `main`, não mesclar a PR #5.
