@@ -116,3 +116,12 @@
 - CI commit `887ee08`: sucesso em Vitest, TypeScript/Vite e Deno. Smoke de Auth/CORS da nova Edge adicionado na sequência e sujeito ao CI da revisão correspondente.
 - Verificação SQL somente-leitura: 0 `imports`, 0 linhas, setembro/2026 `DRAFT`.
 - PENDENTE: HTTP autenticado com OWNER para gate 423, teste positivo de persistência/idempotência concorrente, consistência após falha e aprovação específica do primeiro lançamento financeiro real. Não mudar gate, nem afirmar que o fluxo positivo está homologado, antes da autorização.
+
+## Item 1 — prova HTTP autenticada sem gravação (01/11/2026)
+
+- Ferramenta QA adicionada ao painel existente `ArchivedReportHomologation`: botão **Testar bloqueio financeiro (sem gravação)**, disponível em builds com `VITE_ENABLE_ARCHIVE_HOMOLOGATION=true`. Não habilitar `VITE_ENABLE_FINANCIAL_COMMIT`.
+- A requisição usa o JWT da sessão existente, dois UUIDs sintéticos (confirmados inexistentes no banco de homologação) e caminhos fictícios, sem XLSX nem referência a arquivos reais.
+- Critério de aceite único: `commit-monthly-reports` deve responder HTTP 423 com `Importação financeira ainda não ativada.`; qualquer 200/401/403/500/423 com payload distinto é **FALHA**, nunca confirmação de bloqueio.
+- No Preview da PR #5, o operador precisa entrar na sessão OWNER existente, selecionar SJP e clicar o botão. A tela apresenta sucesso ou erro sem expor credenciais. Registrar o resultado antes de liberar qualquer commit financeiro.
+- A Edge implantada permanece com `verify_jwt=true`, `FINANCIAL_COMMIT_ENABLED` desativado, sem lançamento. Esta prova negativa **não** equivale a teste de escrita/idempotência concorrente.
+- CI de regressão desta alteração: `src/services/financialCommit.test.ts` e etapas afetadas do workflow existente. A comprovação do teste manual OWNER fica pendente até executar o botão na Preview atualizada.
